@@ -1,28 +1,28 @@
 @isTest
-public with sharing class TestUtil {
+public with sharing class TestUser {
     private static Id adminPermissionSetId;
     private static Id adminProfileId;
 
     public static Id getAdminProfileId() {
-        if (TestUtil.adminProfileId == null) {
-            TestUtil.adminProfileId = [select Id from Profile where Name = 'System Administrator'].Id;
+        if (TestUser.adminProfileId == null) {
+            TestUser.adminProfileId = [select Id from Profile where Name = 'System Administrator'].Id;
         }
-        return TestUtil.adminProfileId;
+        return TestUser.adminProfileId;
     }
 
     public static Id getPimAdminPermissionSet() {
-        if (TestUtil.adminPermissionSetId == null) {
-            TestUtil.adminPermissionSetId = [select Id from PermissionSet where Name = 'Propel_PIM_Sys_Admin'].Id;
+        if (TestUser.adminPermissionSetId == null) {
+            TestUser.adminPermissionSetId = [select Id from PermissionSet where Name = 'Propel_PIM_Sys_Admin'].Id;
         }
-        return TestUtil.adminPermissionSetId;
+        return TestUser.adminPermissionSetId;
     }
 
     public static User getAdminWithPermissionSet() {
-        User adminUser = TestUtil.getAdminUser();
+        User adminUser = TestUser.getAdminUser();
         insert adminUser;
 
         insert new PermissionSetAssignment(
-            PermissionSetId = TestUtil.getAdminPermissionSet(),
+            PermissionSetId = TestUser.getAdminPermissionSet(),
             AssigneeId = adminUser.Id
         );
 
@@ -39,7 +39,7 @@ public with sharing class TestUtil {
             LastName = 'Town',
             LanguageLocaleKey = 'en_US',
             LocaleSidKey = 'en_US',
-            ProfileId = TestUtil.getAdminProfileId(),
+            ProfileId = TestUser.getAdminProfileId(),
             TimeZoneSidKey = 'America/Los_Angeles',
             Title = 'Tester',
             Username = 'clowntown@propel.com.' + Math.random()
