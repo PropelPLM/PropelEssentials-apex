@@ -9,7 +9,6 @@ public with sharing class SoslBuilder {
     private String searchTerm;
     private Set<String> searchFields;
     private List<TargetObject> targetObjects;
-    static final String NAMESPACE = PIM.getStaticNamespace();
 
     public SoslBuilder() {
         this.searchTerm = '';
@@ -26,9 +25,6 @@ public with sharing class SoslBuilder {
         private final List<String> defaultReturnFields = new List<String>{'Id', 'Name'};
 
         public TargetObject(String objectType) {
-            if (!objectType.startsWith(SoslBuilder.NAMESPACE)) {
-                objectType = SoslBuilder.NAMESPACE + objectType;
-            }
             this.objectType = objectType;
             this.fields = defaultReturnFields;
         }
@@ -144,7 +140,7 @@ public with sharing class SoslBuilder {
     }
 
     public List<List<SObject>> execute() {
-        PIM.debug('SOSL to execute: ' + this.toString());
+        System.debug('SOSL to execute: ' + this.toString());
         return Search.query(this.toString());
     }
 
