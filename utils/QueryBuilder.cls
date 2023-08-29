@@ -1375,6 +1375,19 @@ public virtual inherited sharing class QueryBuilder {
     }
 
     /**
+     * Prevents changes to queries and their results
+     * <br/>
+     * Enabled query modifications changes certain query results in
+     * Digital_Asset__c & Attribute_Value__c
+     *
+     * @return this - current instance of QueryBuilder.class
+     */
+    public QueryBuilder disableQueryModifications() {
+        this.allowQueryModfications = false;
+        return this;
+    }
+
+    /**
      * Returns an instance of StubbedQueryBuilder, which can be used in Unit Tests.
      *
      * @return a new instance of QueryBuilder.StubbedQueryBuilder.class
@@ -1437,6 +1450,9 @@ public virtual inherited sharing class QueryBuilder {
     public override String toString() {
         String result = 'SELECT ';
         String fields = '';
+        this.fieldTokens = this.allowQueryModfications
+            ? QueryBuilderLifecycleService.preQueryFieldInjection(this)
+            : this.fieldTokens;
         if (this.fieldTokens.isEmpty()) {
             fields = 'Id';
         } else {
@@ -1558,6 +1574,12 @@ public virtual inherited sharing class QueryBuilder {
                     true // CRUD check on the root object
                 );
                 this.result = decision.getRecords();
+                this.result = this.allowQueryModfications
+                    ? QueryBuilderLifecycleService.postQueryOperations(
+                          this.result
+                      )
+                    : this.result;
+
                 Map<String, Set<String>> removedFields = decision.getRemovedFields();
                 if (!removedFields.isEmpty()) {
                     List<String> fields = new List<String>();
@@ -1587,14 +1609,12 @@ public virtual inherited sharing class QueryBuilder {
         } catch (Exception e) {
             // Security.stripInaccessible will throw in Mocks
             if (Test.isRunningTest()) { return new List<SObject>(); }
-            System.debug(
+            throw new QueryException(
                 QueryBuilder.class.getName() +
                 e.getMessage() +
-                '. Query: ' +
-                this.toString()
+                '. Query: '
+                + this.toString()
             );
-
-            throw new QueryException(e.getMessage());
         }
     }
 
@@ -1605,6 +1625,18 @@ public virtual inherited sharing class QueryBuilder {
      */
     public Map<Id, SObject> toMap() {
         return new Map<Id, SObject>(this.toList());
+    }
+
+    /**
+     * Executes a query or returns already executed result as a map of SObjects, keyed by a new field
+     *
+     * @param fieldValueAsKey field of SObject to serve as key. field should be marked as unique on SObject
+     *
+     * @return map of SObjects by field value
+     */
+    public Map<Object, SObject> toMapOnKey(String fieldValueAsKey) {
+        List<SObject> sobjs = this.toList();
+        return PIM.mappifyWithFieldAsKey(sobjs, fieldValueAsKey);
     }
 
     /**
@@ -1781,6 +1813,414 @@ public virtual inherited sharing class QueryBuilder {
             return this;
         }
 
+        public ConditionsManager addAttrValPolymorphicEqualCondition(
+            Id recordId
+        ) {
+            return addAttrValPolymorphicEqualCondition(recordId, false);
+        }
+
+        public ConditionsManager addAttrValPolymorphicEqualCondition(
+            Id recordId,
+            Boolean strict
+        ) {
+            attrValCheck();
+            this.conditions.add(
+                new QueryBuilder.CompareCondition(
+                        getAttrValLookupRecordFieldName(recordId)
+                    )
+                    .eq(recordId)
+            );
+            if (
+                !strict ||
+                recordId.getSObjectType() != Product__c.getSObjectType()
+            ) {
+                return this;
+            }
+
+            injectStrictConditions();
+            return this;
+        }
+
+        public ConditionsManager addAttrValPolymorphicInCondition(
+            List<Id> recordIds
+        ) {
+            return addAttrValPolymorphicInCondition(recordIds, false);
+        }
+
+        public ConditionsManager addAttrValPolymorphicInCondition(
+            List<Id> recordIds,
+            Boolean strict
+        ) {
+            if (recordIds == null || recordIds.size() == 0) {
+                return this;
+            }
+            attrValCheck();
+
+            this.conditions.add(
+                new QueryBuilder.InCondition(
+                        getAttrValLookupRecordFieldName(recordIds[0])
+                    )
+                    .inCollection(recordIds)
+            );
+            if (
+                !strict ||
+                recordIds[0].getSObjectType() != Product__c.getSObjectType()
+            ) {
+                return this;
+            }
+
+            injectStrictConditions();
+            return this;
+        }
+
+        private void attrValCheck() {
+            String lowerCased = PIM.stripNamespaceToLowercase(
+                this.queryBuilder.fromSObject
+            );
+            String lowerCaseAttrValString = 'attribute_value__c';
+            if (lowerCased != lowerCaseAttrValString) {
+                throw new QueryException(
+                    'Source SObject is not attribute_value__c, but is instead: ' +
+                    lowerCased
+                );
+            }
+        }
+
+        private void injectStrictConditions() {
+            this.setConditionOrder('1 AND 2');
+            this.conditions.add(
+                new QueryBuilder.NullCondition('Overwritten_Variant_Value__c')
+                    .isNull()
+            );
+        }
+
+        private String getAttrValLookupRecordFieldName(Id recordId) {
+            Schema.SObjectType objectType = recordId.getSobjectType();
+            if (objectType == Product__c.getSObjectType()) {
+                return 'Product__c';
+            } else if (objectType == Digital_Asset__c.getSObjectType()) {
+                return 'Digital_Asset__c';
+            } else if (objectType == Variant_Value__c.getSObjectType()) {
+                return 'Overwritten_Variant_Value__c';
+            }
+            return null;
+        }
+
+        public ConditionsManager translatePQLCriteriaIntoConditions(
+            List<Map<String, Object>> formattedCriteriaList
+        ) {
+            return translatePQLCriteriaIntoConditions(
+                formattedCriteriaList,
+                false
+            );
+        }
+
+        public ConditionsManager translatePQLCriteriaIntoConditions(
+            List<Map<String, Object>> formattedCriteriaList,
+            Boolean preserveOrder
+        ) {
+            Set<String> categoryIds = new Set<String>();
+            Set<String> tpIds = new Set<String>();
+            String prevField = '';
+            Integer currNumConditions;
+            for (Map<String, Object> criteriaMap : formattedCriteriaList) {
+                currNumConditions = this.conditions.size();
+                String critFieldName = String.valueOf(
+                    criteriaMap.get(PQLHelper.KEY_FIELD)
+                );
+                String valType = String.valueOf(
+                    criteriaMap.get(PQLHelper.KEY_TYPE)
+                );
+                String value = String.valueOf(
+                    criteriaMap.get(PQLHelper.KEY_VALUE)
+                );
+                String valueFrom = String.valueOf(
+                    criteriaMap.get(PQLHelper.KEY_VALUE_FROM)
+                );
+                String valueTo = String.valueOf(
+                    criteriaMap.get(PQLHelper.KEY_VALUE_TO)
+                );
+                String conditionType = String.valueOf(
+                    criteriaMap.get(PQLHelper.KEY_CONDITION)
+                );
+
+                // hasMultiple indicates whether or not a the field of current criterion is used more than once.
+                Boolean hasMultiple =
+                    String.valueOf(criteriaMap.get(PQLHelper.HAS_MULTIPLE)) ==
+                    'true';
+                if (hasMultiple && prevField != critFieldName) {
+                    prevField = critFieldName;
+                }
+
+                String[] fieldChain = critFieldName.split('\\.');
+
+                if (!PQLHelper.ACCEPTABLE_CONDITIONS.contains(conditionType)) {
+                    throw new QueryBuilderException(
+                        'Unexpected condition type: ' + conditionType
+                    );
+                }
+
+                if (value == null) {
+                    if (conditionType == 'eq' || conditionType == 'includes') {
+                        conditionType = 'isNull';
+                    } else if (
+                        conditionType == 'ne' ||
+                        conditionType == 'excludes'
+                    ) {
+                        conditionType = 'notNull';
+                    }
+                }
+
+                if (valType == 'multipicklist' && value != null) {
+                    // TODO: need smart way to deal with inCollection/notIn
+                    // value = PQLHelper.parseMultipicklistCondition(criteriaMap);
+                }
+                if (valType == 'string' && value != null) {
+                    value = value.trim();
+                }
+
+                if (conditionType == 'eq' || conditionType == 'ne') {
+                    Boolean valueBool = valType == 'boolean'
+                        ? Boolean.valueOf(value)
+                        : null;
+                    Boolean valueImage = valType == 'image'
+                        ? Boolean.valueOf(value)
+                        : null;
+                    Decimal valueDecimal = valType == 'decimal'
+                        ? Decimal.valueOf(value)
+                        : null;
+                    if (conditionType == 'eq') {
+                        if (
+                            valType == 'string' ||
+                            valType == 'picklist' ||
+                            valType == 'multipicklist' ||
+                            valType == 'lookup'
+                        ) {
+                            this.add(
+                                new QueryBuilder.CompareCondition(critFieldName)
+                                    .eq(value)
+                            );
+                        } else if (valType == 'date' || valType == 'datetime') {
+                            this.add(
+                                new QueryBuilder.CompareCondition(critFieldName)
+                                    .eq(value, false)
+                            );
+                        } else if (valType == 'decimal') {
+                            this.add(
+                                new QueryBuilder.CompareCondition(critFieldName)
+                                    .eq(valueDecimal)
+                            );
+                        } else if (valType == 'boolean') {
+                            this.add(
+                                new QueryBuilder.CompareCondition(critFieldName)
+                                    .eq(valueBool)
+                            );
+                        } else if (valType == 'image') {
+                            // can't put calculated formula fields like image__c and thumbnail_img__c into where clause
+                            critFieldName = critFieldName.toLowerCase()
+                                .replaceAll('image__c$', 'external_image__c')
+                                .replaceAll(
+                                    'thumbnail_img__c$',
+                                    'thumbnail__c'
+                                );
+
+                            if (valueImage) {
+                                this.add(
+                                    new QueryBuilder.NullCondition(
+                                            critFieldName
+                                        )
+                                        .notNull()
+                                );
+                            } else {
+                                this.add(
+                                    new QueryBuilder.NullCondition(
+                                            critFieldName
+                                        )
+                                        .isNull()
+                                );
+                            }
+                        }
+                    } else if (conditionType == 'ne') {
+                        if (
+                            valType == 'string' ||
+                            valType == 'picklist' ||
+                            valType == 'multipicklist' ||
+                            valType == 'lookup'
+                        ) {
+                            this.add(
+                                new QueryBuilder.CompareCondition(critFieldName)
+                                    .ne(value)
+                            );
+                        } else if (valType == 'date' || valType == 'datetime') {
+                            this.add(
+                                new QueryBuilder.CompareCondition(critFieldName)
+                                    .ne(value, false)
+                            );
+                        } else if (valType == 'decimal') {
+                            this.add(
+                                new QueryBuilder.CompareCondition(critFieldName)
+                                    .ne(valueDecimal)
+                            );
+                        } else if (valType == 'boolean') {
+                            this.add(
+                                new QueryBuilder.CompareCondition(critFieldName)
+                                    .ne(valueBool)
+                            );
+                        }
+                    }
+                } else if (conditionType == 'btw') {
+                    if (valType == 'decimal') {
+                        this.add(
+                            new QueryBuilder.CompareCondition(critFieldName)
+                                .gte(Decimal.valueOf(valueFrom))
+                        );
+                        this.add(
+                            new QueryBuilder.CompareCondition(critFieldName)
+                                .lte(Decimal.valueOf(valueTo))
+                        );
+                    } else if (valType == 'date' || valType == 'datetime') {
+                        this.add(
+                            new QueryBuilder.CompareCondition(critFieldName)
+                                .gte(valueFrom)
+                        );
+                        this.add(
+                            new QueryBuilder.CompareCondition(critFieldName)
+                                .lte(valueTo)
+                        );
+                    }
+                } else if (conditionType == 'lt') {
+                    if (valType == 'decimal') {
+                        this.add(
+                            new QueryBuilder.CompareCondition(critFieldName)
+                                .lt(Decimal.valueOf(value))
+                        );
+                    } else if (valType == 'date' || valType == 'datetime') {
+                        this.add(
+                            new QueryBuilder.CompareCondition(critFieldName)
+                                .lt(value)
+                        );
+                    }
+                } else if (conditionType == 'gt') {
+                    if (valType == 'decimal') {
+                        this.add(
+                            new QueryBuilder.CompareCondition(critFieldName)
+                                .gt(Decimal.valueOf(value))
+                        );
+                    } else if (valType == 'date' || valType == 'datetime') {
+                        this.add(
+                            new QueryBuilder.CompareCondition(critFieldName)
+                                .gt(value)
+                        );
+                    }
+                } else if (conditionType == 'lte') {
+                    if (valType == 'decimal') {
+                        this.add(
+                            new QueryBuilder.CompareCondition(critFieldName)
+                                .lte(Decimal.valueOf(value))
+                        );
+                    } else if (valType == 'date' || valType == 'datetime') {
+                        this.add(
+                            new QueryBuilder.CompareCondition(critFieldName)
+                                .lte(value)
+                        );
+                    }
+                } else if (conditionType == 'gte') {
+                    if (valType == 'decimal') {
+                        this.add(
+                            new QueryBuilder.CompareCondition(critFieldName)
+                                .gte(Decimal.valueOf(value))
+                        );
+                    } else if (valType == 'date' || valType == 'datetime') {
+                        this.add(
+                            new QueryBuilder.CompareCondition(critFieldName)
+                                .gte(value)
+                        );
+                    }
+                } else if (conditionType == 'isNull') {
+                    this.add(
+                        new QueryBuilder.NullCondition(critFieldName).isNull()
+                    );
+                } else if (conditionType == 'notNull') {
+                    this.add(
+                        new QueryBuilder.NullCondition(critFieldName).notNull()
+                    );
+                } else if (conditionType == 'likeAnyBoth') {
+                    this.add(
+                        new QueryBuilder.LikeCondition(critFieldName)
+                            .likeAnyBoth(value)
+                    );
+                } else if (conditionType == 'likeAnyLeft') {
+                    this.add(
+                        new QueryBuilder.LikeCondition(critFieldName)
+                            .likeAnyLeft(value)
+                    );
+                } else if (conditionType == 'likeAnyRight') {
+                    this.add(
+                        new QueryBuilder.LikeCondition(critFieldName)
+                            .likeAnyRight(value)
+                    );
+                } else if (
+                    (conditionType == 'inCollection' ||
+                    conditionType == 'notIn') && valType == 'list'
+                ) {
+                    List<Object> listOfObj = new List<Object>();
+                    List<String> listOfString = new List<String>();
+
+                    if (
+                        criteriaMap.get(PQLHelper.KEY_VALUE) instanceof String
+                    ) {
+                        String toSplit = (String) criteriaMap.get(
+                            PQLHelper.KEY_VALUE
+                        );
+                        listOfString = toSplit.split(',');
+                    } else {
+                        listOfObj = (List<Object>) criteriaMap.get(
+                            PQLHelper.KEY_VALUE
+                        );
+                        for (Object obj : listOfObj) {
+                            listOfString.add(String.valueOf(obj));
+                        }
+                    }
+                    if (conditionType == 'inCollection') {
+                        this.add(
+                            new QueryBuilder.InCondition(critFieldName)
+                                .inCollection(listOfString)
+                        );
+                    } else if (conditionType == 'notIn') {
+                        this.add(
+                            new QueryBuilder.InCondition(critFieldName)
+                                .notIn(listOfString)
+                        );
+                    }
+                } else if (
+                    conditionType == 'includes' ||
+                    conditionType == 'excludes'
+                ) {
+                    if (conditionType == 'includes') {
+                        this.add(
+                            new QueryBuilder.IncludesCondition(critFieldName)
+                                .includes(value)
+                        );
+                    } else if (conditionType == 'excludes') {
+                        this.add(
+                            new QueryBuilder.IncludesCondition(critFieldName)
+                                .excludes(value)
+                        );
+                    }
+                } else {
+                    throw new QueryBuilderException(
+                        'PQL Criteria not constructed correctly: ' + criteriaMap
+                    );
+                }
+                if (currNumConditions == this.conditions.size()) {
+                    throw new QueryBuilderException(
+                        'No criteria added, criteria not constructed correctly: ' +
+                        criteriaMap
+                    );
+                }
+            }
+            return this;
+        }
 
         public ConditionsManager preview() {
             System.debug('\nCONDITIONS');
