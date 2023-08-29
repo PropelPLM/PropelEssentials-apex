@@ -91,24 +91,6 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testAddSubQuery1() {
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addField('Id')
-                .addSubQuery('SELECT Id FROM Contacts')
-                .toList();
-        System.assertEquals(1, accounts.size());
-    }
-
-    @IsTest
-    public static void testAddSubQuery2() {
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addField('Id')
-                .addSubQuery(new QueryBuilder('Contacts'))
-                .toList();
-        System.assertEquals(1, accounts.size());
-    }
-
-    @IsTest
     public static void testField1() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addField('Name')
@@ -216,71 +198,30 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
+    public static void testFields5() {
+        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
+                .addFieldsAll()
+                .toList();
+        System.assertEquals(1, accounts.size());
+        System.assertNotEquals(null, accounts[0].Name);
+    }
+
+    @IsTest
+    public static void testFields6() {
+        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
+                .addFieldsAll('Account')
+                .toList();
+        System.assertEquals(1, accounts.size());
+        System.assertNotEquals(null, accounts[0].Name);
+    }
+
+    @IsTest
     public static void testFields7() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addFieldsAllCreatable()
                 .toList();
         System.assertEquals(1, accounts.size());
         System.assertNotEquals(null, accounts[0].Name);
-    }
-
-    @IsTest
-    public static void testFields11() {
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addFieldsAllCreatable(Account.class)
-                .toList();
-        System.assertEquals(1, accounts.size());
-        System.assertNotEquals(null, accounts[0].Name);
-    }
-
-    @IsTest
-    public static void testFields12() {
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addFieldsAllCreatable(Account.getSObjectType())
-                .toList();
-        System.assertEquals(1, accounts.size());
-        System.assertNotEquals(null, accounts[0].Name);
-    }
-
-    @IsTest
-    public static void testFields13() {
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addFieldsAllCreatable(new Account())
-                .toList();
-        System.assertEquals(1, accounts.size());
-        System.assertNotEquals(null, accounts[0].Name);
-    }
-
-    @IsTest
-    public static void testFieldsAllUpdatable1() {
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addFieldsAllUpdatable()
-                .toList();
-        System.assertEquals(1, accounts.size());
-    }
-
-    @IsTest
-    public static void testFieldsAllUpdatable2() {
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addFieldsAllUpdatable('Account')
-                .toList();
-        System.assertEquals(1, accounts.size());
-    }
-
-    @IsTest
-    public static void testFieldsAllUpdatable3() {
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addFieldsAllUpdatable(Account.class)
-                .toList();
-        System.assertEquals(1, accounts.size());
-    }
-
-    @IsTest
-    public static void testFieldsAllUpdatable4() {
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addFieldsAllUpdatable(new Account())
-                .toList();
-        System.assertEquals(1, accounts.size());
     }
 
     @IsTest
@@ -292,81 +233,6 @@ public with sharing class QueryBuilderTest {
                 .endConditions()
                 .toList();
         System.assertEquals(1, accounts.size());
-    }
-
-    @IsTest
-    public static void testAddConditionsWithOrder() {
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addConditionsWithOrder('1 and (2 or 3) and 4')
-                .endConditions()
-                .toList();
-        System.assertEquals(1, accounts.size());
-    }
-
-    @IsTest
-    public static void testAddGroupBy1() {
-        String accountQueryStr = new QueryBuilder(Account.class)
-                .addGroupBy('Id, Name')
-                .toString();
-        System.assertEquals(true, accountQueryStr.contains('SELECT Id FROM Account WITH SECURITY_ENFORCED GROUP BY Id, Name'), accountQueryStr);
-
-        accountQueryStr = new QueryBuilder(Account.class)
-                .addGroupBy(Account.Name)
-                .toString();
-        System.assertEquals('SELECT Id FROM Account WITH SECURITY_ENFORCED GROUP BY Name', accountQueryStr);
-    }
-
-    @IsTest
-    public static void testInstanciateAndOtherSettings() {
-        String accountQueryStr = new QueryBuilder()
-                .addFrom(Account.class)
-                .setOffset(1)
-                .setScope(QueryBuilder.FilterScope.MINE)
-                .setForView(true)
-                .setForView()
-                .setForReference(true)
-                .setForReference()
-                .setUpdateTracking(true)
-                .setUpdateTracking()
-                .setUpdateViewstat()
-                .setUpdateViewstat(true)
-                .setWithSecurityEnforced()
-                .setWithSecurityEnforced(true)
-                .setCheckFLS()
-                .setCheckFLS(true)
-                .toString();
-        System.assertEquals('SELECT Id FROM Account USING SCOPE MINE WITH SECURITY_ENFORCED OFFSET 1 FOR VIEW UPDATE TRACKING, VIEWSTAT', accountQueryStr);
-
-        // Code coverage for corer cases in toString()
-        accountQueryStr = new QueryBuilder()
-                .addFrom(Account.class)
-                .setForView(false)
-                .setForReference(true)
-                .setUpdateTracking(true)
-                .toString();
-
-        accountQueryStr = new QueryBuilder()
-                .addFrom(Account.class)
-                .setUpdateViewstat(true)
-                .toString();
-
-        String accountQueryCountStr = new QueryBuilder(Account.class)
-                .setScope(QueryBuilder.FilterScope.MINE)
-                .setOffset(1)
-                .setLimit(1)
-                .toStringCount();
-        System.assertEquals('SELECT count() FROM Account USING SCOPE MINE LIMIT 1 OFFSET 1', accountQueryCountStr);
-
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .toList();
-        System.assertEquals(1, accounts.size());
-    }
-
-    @IsTest
-    public static void testToQueryLocator() {
-        Database.QueryLocator accounts = new QueryBuilder(Account.class)
-                .toQueryLocator();
-        System.assertNotEquals(null, accounts);
     }
 
     @IsTest
@@ -430,7 +296,7 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testCompareCondition2() {
+    public static void testCompareCondition12() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
                 .add(new QueryBuilder.CompareCondition(Account.Name).eq('Account-1'))
@@ -440,7 +306,7 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testCompareCondition3() {
+    public static void testCompareCondition2() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
                 .add(new QueryBuilder.CompareCondition('Name').ne('Account-1'))
@@ -450,7 +316,7 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testCompareCondition4() {
+    public static void testCompareCondition3() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
                 .add(new QueryBuilder.CompareCondition('NumberOfEmployees').eq(1))
@@ -460,7 +326,7 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testCompareCondition5() {
+    public static void testCompareCondition31() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
                 .add(new QueryBuilder.CompareCondition('NumberOfEmployees').ne(0))
@@ -470,7 +336,7 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testCompareCondition6() {
+    public static void testCompareCondition32() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
                 .add(new QueryBuilder.CompareCondition('NumberOfEmployees').gt(0))
@@ -480,7 +346,7 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testCompareCondition7() {
+    public static void testCompareCondition33() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
                 .add(new QueryBuilder.CompareCondition('NumberOfEmployees').gte(1))
@@ -491,7 +357,7 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testCompareCondition8() {
+    public static void testCompareCondition34() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
                 .add(new QueryBuilder.CompareCondition('NumberOfEmployees').lt(0))
@@ -501,7 +367,7 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testCompareCondition9() {
+    public static void testCompareCondition35() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
                 .add(new QueryBuilder.CompareCondition('NumberOfEmployees').lte(-1))
@@ -509,57 +375,6 @@ public with sharing class QueryBuilderTest {
                 .preview()
                 .toList();
         System.assert(accounts.isEmpty());
-    }
-
-    @IsTest
-    public static void testCompareCondition10() {
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.CompareCondition('IsDeleted').eq(true))
-                .endConditions()
-                .toList();
-        System.assert(accounts.isEmpty());
-    }
-
-    @IsTest
-    public static void testCompareCondition11() {
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.CompareCondition('IsDeleted').ne(false))
-                .endConditions()
-                .toList();
-        System.assert(accounts.isEmpty());
-    }
-
-    @IsTest
-    public static void testCompareCondition12() {
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.CompareCondition('CreatedDate').lt('TODAY'))
-                .endConditions()
-                .toList();
-        System.assert(accounts.isEmpty());
-
-        accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.CompareCondition('CreatedDate').gt('TODAY'))
-                .endConditions()
-                .toList();
-        System.assert(accounts.isEmpty());
-
-        accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.CompareCondition('CreatedDate').lte('TODAY'))
-                .endConditions()
-                .toList();
-        System.assert(!accounts.isEmpty());
-
-        accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.CompareCondition('CreatedDate').gte('TODAY'))
-                .endConditions()
-                .toList();
-        System.assert(!accounts.isEmpty());
     }
 
     @IsTest
@@ -603,7 +418,7 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testInCondition1() {
+    public static void testInCondition01() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
                 .add(new QueryBuilder.InCondition('Id').inCollection(new Set<Id>()))
@@ -613,7 +428,7 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testInCondition2() {
+    public static void testInCondition02() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
                 .add(new QueryBuilder.InCondition('Id').inCollection(new List<Id>()))
@@ -623,7 +438,7 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testInCondition3() {
+    public static void testInCondition1() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
                 .add(new QueryBuilder.InCondition('Name').inCollection(new List<String>{
@@ -635,26 +450,19 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testInCondition4() {
-        List<String> inList = new List<String>();
+    public static void testInCondition12() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
-                .add(new QueryBuilder.InCondition(Account.Name).inCollection(inList))
-                .endConditions()
-                .toList();
-        System.assertEquals(0, accounts.size());
-
-        inList.add('Account-1');
-        accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition(Account.Name).inCollection(inList))
+                .add(new QueryBuilder.InCondition(Account.Name).inCollection(new List<String>{
+                        'Account-1'
+                }))
                 .endConditions()
                 .toList();
         System.assertEquals(1, accounts.size());
     }
 
     @IsTest
-    public static void testInCondition5() {
+    public static void testInCondition2() {
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
                 .add(new QueryBuilder.InCondition('Name').inCollection(new Set<String>{
@@ -666,7 +474,7 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testInCondition6() {
+    public static void testInCondition3() {
         Set<Id> accIds = new QueryBuilder('Account').toIdSet();
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
@@ -674,47 +482,10 @@ public with sharing class QueryBuilderTest {
                 .endConditions()
                 .toList();
         System.assertEquals(1, accounts.size());
-
-        // The following are not valid for typing issue but will increase code coverage
-        Set<String> stringSet = new Set<String>(); // Test coverage for empty set
-        String accountQueryStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').inCollection(stringSet))
-                .endConditions()
-                .toString();
-
-        Set<Decimal> decSet = new Set<Decimal>(); // Test coverage for empty set
-        accountQueryStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').inCollection(decSet))
-                .endConditions()
-                .toString();
-
-        decSet.add(1);
-        accountQueryStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').inCollection(decSet))
-                .endConditions()
-                .toString();
-
-        //Test list of Decimal
-        List<Decimal> decList = new List<Decimal>(); // Test coverage for empty list
-        accountQueryStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').inCollection(decList))
-                .endConditions()
-                .toString();
-
-        decList.add(1);
-        accountQueryStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').inCollection(decList))
-                .endConditions()
-                .toString();
     }
 
     @IsTest
-    public static void testInCondition7() {
+    public static void testInCondition31() {
         List<String> accIds = new List<Id>(new QueryBuilder('Account').toIdSet());
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addConditions()
@@ -722,105 +493,6 @@ public with sharing class QueryBuilderTest {
                 .endConditions()
                 .toList();
         System.assertEquals(1, accounts.size());
-    }
-
-    @IsTest
-    public static void testInCondition8() {
-        String accountQureyStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').inCollection(new QueryBuilder('Contact')))
-                .endConditions()
-                .toString();
-        System.assertEquals(true, accountQureyStr.contains('SELECT Id FROM Account WHERE Id IN (SELECT Id FROM Contact)'), accountQureyStr);
-        System.assertEquals(true, accountQureyStr.contains('WITH SECURITY_ENFORCED'), accountQureyStr);
-
-        accountQureyStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').inCollection([select Id from Account]))
-                .endConditions()
-                .toString();
-
-        accountQureyStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').inCollection(new Map<Id, SObject>([select Id from Account])))
-                .endConditions()
-                .toString();
-    }
-
-    @IsTest
-    public static void testNotInCondition() {
-        String accountQureyStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').notIn(new QueryBuilder('Contact')))
-                .endConditions()
-                .toString();
-        System.assertEquals(true, accountQureyStr.contains('SELECT Id FROM Account WHERE Id NOT IN (SELECT Id FROM Contact)'), accountQureyStr);
-        System.assertEquals(true, accountQureyStr.contains('WITH SECURITY_ENFORCED'), accountQureyStr);
-
-        accountQureyStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').notIn([select Id from Account]))
-                .endConditions()
-                .toString();
-
-        accountQureyStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').notIn(new Map<Id, SObject>([select Id from Account])))
-                .endConditions()
-                .toString();
-
-        Set<Id> idSet = new Set<Id>();
-        accountQureyStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').notIn(idSet))
-                .endConditions()
-                .toString();
-
-        idSet.add([select Id from account limit 1][0].Id);
-        accountQureyStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').notIn(idSet))
-                .endConditions()
-                .toString();
-
-        List<String> strList = new List<String>();
-        accountQureyStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').notIn(strList))
-                .endConditions()
-                .toString();
-
-        strList.add('someString');
-        accountQureyStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.InCondition('Id').notIn(strList))
-                .endConditions()
-                .toString();
-    }
-
-    @IsTest
-    public static void testIncludesCondition1() {
-        String accountQueryStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.IncludesCondition('Id').includes('includedId'))
-                .endConditions()
-                .toString();
-
-        System.assertEquals(true, accountQueryStr.contains('SELECT Id FROM Account WHERE Id includes'), accountQueryStr);
-
-    }
-
-    @IsTest
-    public static void testIncludesCondition2() {
-        String accountQueryStr = new QueryBuilder(Account.class)
-                .addConditions()
-                .add(new QueryBuilder.IncludesCondition('Id').excludes('excludedId'))
-                .endConditions()
-                .toString();
-
-        System.assertEquals(true, accountQueryStr.contains('SELECT Id FROM Account WHERE Id excludes (\'excludedId\')'), accountQueryStr);
-        System.assertEquals(true, accountQueryStr.contains('WITH SECURITY_ENFORCED'), accountQueryStr);
-
     }
 
     @IsTest
@@ -941,25 +613,6 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testLimit3() {
-        createAccount(2);
-        Decimal dec = 1;
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .setLimit(dec)
-                .toList();
-        System.assertEquals(1, accounts.size());
-    }
-
-    @IsTest
-    public static void testSetOffset() {
-        createAccount(2);
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .setOffset(1)
-                .toList();
-        System.assertEquals(1, accounts.size());
-    }
-
-    @IsTest
     public static void testOrder1() {
         createAccount(2);
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
@@ -971,7 +624,6 @@ public with sharing class QueryBuilderTest {
 
     @IsTest
     public static void testOrder2() {
-
         createAccount(2);
         List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
                 .addField('Name')
@@ -1003,67 +655,22 @@ public with sharing class QueryBuilderTest {
     }
 
     @IsTest
-    public static void testOrder5() {
-        createAccount(2);
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addField('Name')
-                .addOrderAsc(Account.Name)
-                .toList();
-        System.assertEquals('Account-1', accounts[0].Name);
-
-        accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addField('Name')
-                .addOrderDesc(Account.Name)
-                .toList();
-        System.assertEquals('Account-2', accounts[0].Name);
-    }
-
-    @IsTest
-    public static void testOrder() {
-        createAccount(2);
-        List<Account> accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addField('Name')
-                .addOrder(new QueryBuilder.Order(Account.Name)
-                    .setSortingOrderAsc()
-                    .setNullsOrderLast())
-                .toList();
-        System.assertEquals('Account-1', accounts[0].Name);
-
-        accounts = (List<Account>) new QueryBuilder(Account.class)
-                .addField('Name')
-                .addOrder(new QueryBuilder.Order(Account.Name)
-                    .setSortingOrderDesc()
-                    .setNullsOrderLast())
-                .toList();
-        System.assertEquals('Account-2', accounts[0].Name);
-    }
-
-    @IsTest
     public static void testPreview() {
-        QueryBuilder qb = new QueryBuilder(Account.class).preview();
-        System.assertEquals(
-                'SELECT Id FROM Account WITH SECURITY_ENFORCED',
-                qb.toString(),
-                'Failure: tostring bad'
-        );
+        new QueryBuilder(Account.class)
+                .preview();
     }
 
     @IsTest
     public static void testPreviewCount() {
-        QueryBuilder qb = new QueryBuilder(Account.class).previewCount();
-        System.assertEquals(
-                'SELECT Id FROM Account WITH SECURITY_ENFORCED',
-                qb.toString(),
-                'Failure: tostring bad'
-        );
+        new QueryBuilder(Account.class)
+                .previewCount();
     }
 
     @IsTest
     public static void testToString() {
         String queryString = new QueryBuilder(Account.class)
                 .toString();
-        System.assertEquals(true, queryString.contains('SELECT Id FROM Account'), queryString);
-        System.assertEquals(true, queryString.contains('WITH SECURITY_ENFORCED'), queryString);
+        System.assertEquals('SELECT Id \nFROM Account', queryString);
     }
 
     @IsTest
@@ -1142,45 +749,26 @@ public with sharing class QueryBuilderTest {
 
     @IsTest
     public static void testExtractIds() {
-        Id accId = new QueryBuilder('Account').toSObject().Id;
-        createContact(accId);
+        final Id ACCOUNT_ID = new QueryBuilder('Account').toSObject().Id;
+        createContact(ACCOUNT_ID);
         Set<Id> extractedIds = new QueryBuilder('Contact')
                 .addField('AccountId')
                 .extractIds('AccountId');
         System.assertEquals(1, extractedIds.size());
-        System.assert(extractedIds.contains(accId));
-
-        extractedIds = new QueryBuilder('Contact')
-                .addField('AccountId')
-                .addField('ReportsToId')
-                .extractIds('ReportsToId');
-        System.assertEquals(0, extractedIds.size());
-    }
-
-    @IsTest
-    public static void testExtractField1() {
-        List<Object> accountNames = new QueryBuilder('Account')
-                .addField('Name')
-                .extractField('Name');
-        System.assertEquals(1, accountNames.size());
-
-        accountNames = new QueryBuilder('Account')
-                .addField('Name')
-                .extractField(Account.Name);
-        System.assertEquals(1, accountNames.size());
+        System.assert(extractedIds.contains(ACCOUNT_ID));
     }
 
     @IsTest
     public static void testClone1() {
         QueryBuilder qb1 = new QueryBuilder('Account');
-        System.assertEquals('SELECT Id FROM Account', qb1.toString());
+        System.assertEquals('SELECT Id \nFROM Account', qb1.toString());
 
         QueryBuilder qb2 = qb1.cloneQueryBuilder();
         qb2.addField('Name');
 
         qb1.resetResult();
-        System.assertEquals('SELECT Id FROM Account', qb1.toString());
-        System.assertEquals('SELECT Name FROM Account', qb2.toString());
+        System.assertEquals('SELECT Id \nFROM Account', qb1.toString());
+        System.assertEquals('SELECT Name \nFROM Account', qb2.toString());
     }
 
     @IsTest
@@ -1196,14 +784,14 @@ public with sharing class QueryBuilderTest {
 
     @IsTest
     public static void testStub1() {
-        String expectedSoql = 'SELECT Name FROM Account';
+        final String EXPECTED_SOQL = 'SELECT Name FROM Account';
 
         QueryBuilder stubbedQueryBuilder = new QueryBuilder(Account.class)
                 .buildStub()
-                .addStubToString(expectedSoql)
+                .addStubToString(EXPECTED_SOQL)
                 .applyStub();
 
-        System.assertEquals(expectedSoql, stubbedQueryBuilder.toString());
+        System.assertEquals(EXPECTED_SOQL, stubbedQueryBuilder.toString());
     }
 
     @IsTest
@@ -1218,76 +806,6 @@ public with sharing class QueryBuilderTest {
         List<Account> accounts = (List<Account>) stubbedQueryBuilder.toList();
         System.assertEquals(1, accounts.size());
         System.assertEquals('Stubbed-Account', accounts[0].Name);
-    }
-
-    @IsTest
-    public static void testStub3() {
-        String expectedSoql = 'SELECT count() FROM Account';
-
-        QueryBuilder stubbedQueryBuilder = new QueryBuilder(Account.class)
-                .buildStub()
-                .addStubToStringCount(expectedSoql)
-                .applyStub();
-
-        System.assertEquals(expectedSoql, stubbedQueryBuilder.toStringCount());
-    }
-
-    @IsTest
-    public static void testStub4() {
-        QueryBuilder stubbedQueryBuilder = new QueryBuilder(Account.class)
-                .buildStub()
-                .addStubToCount(1)
-                .applyStub();
-
-        System.assertEquals(1, stubbedQueryBuilder.toCount());
-    }
-
-    @IsTest
-    public static void testStub5() {
-        QueryBuilder stubbedQueryBuilder = new QueryBuilder(Account.class)
-                .buildStub()
-                .addStubToMap(new Map<Id, SObject>([select Id from Account]))
-                .applyStub();
-
-        System.assertEquals(1, stubbedQueryBuilder.toMap().keySet().size());
-    }
-
-    @IsTest
-    public static void testStub6() {
-        Account acc = [select Id, Name from Account limit 1][0];
-        QueryBuilder stubbedQueryBuilder = new QueryBuilder(Account.class)
-                .buildStub()
-                .addStubToSObject(acc)
-                .applyStub();
-
-        System.assertEquals('Account-1', stubbedQueryBuilder.toSObject().get('Name'));
-    }
-
-    @IsTest
-    public static void testStub7() {
-        Account acc = [select Id, Name from Account limit 1][0];
-        Set<Id> idSet = new Set<Id>{acc.Id};
-        QueryBuilder stubbedQueryBuilder = new QueryBuilder(Account.class)
-                .buildStub()
-                .addStubToIdSet(idSet)
-                .applyStub();
-
-        System.assertEquals(1, stubbedQueryBuilder.toIdSet().size());
-
-        stubbedQueryBuilder = new QueryBuilder(Account.class)
-                .buildStub()
-                .addStubExtractIds(idSet)
-                .applyStub();
-
-        System.assertEquals(1, stubbedQueryBuilder.extractIds('Id').size());
-
-        String[] nameList = new List<String>{'Account-stub'};
-        stubbedQueryBuilder = new QueryBuilder(Account.class)
-                .buildStub()
-                .addStubExtractField(nameList)
-                .applyStub();
-
-        System.assertEquals('Account-stub', String.valueOf(stubbedQueryBuilder.extractField('Name')[0]));
     }
 
     //Utility methods

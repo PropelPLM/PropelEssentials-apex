@@ -29,19 +29,19 @@
  * @version 1.0
  */
 public virtual inherited sharing class QueryBuilder {
+
     public enum FilterScope {
-        DELEGATED,
-        EVERYTHING,
-        MINE,
-        MINE_AND_MY_GROUPS,
-        MY_TERRIORY,
-        MY_TEAM_TERRIORY,
-        TEAN
+        Delegated,
+        Everything,
+        Mine,
+        MineAndMyGroups,
+        My_Territory,
+        My_Team_Territory,
+        Team
     }
 
-    public String fromSobject;
-    public Set<String> fieldTokens;
-    public Boolean isSingleFieldSubQuery = false;
+    private String fromSobject;
+    private Set<String> fieldTokens;
     private Set<String> groupByFields;
     private List<Order> sortingOrder;
     private FilterScope scope;
@@ -53,14 +53,14 @@ public virtual inherited sharing class QueryBuilder {
     private Boolean forView;
     private Boolean forReference;
     private Boolean withSecurityEnforced;
-    private Boolean allowQueryModfications = true;
 
     private StubbedQueryBuilder stubbedQueryBuilder;
 
     private ConditionsManager conditionsManager;
 
     private List<SObject> result;
-    private Boolean checkFls; // check permissions and throw a specific error if any field is not available to the user
+    private Boolean checkCrud;
+    private Boolean checkFls;
 
     /**
      * Constructs an empty QueryBuilder instance.
@@ -77,13 +77,14 @@ public virtual inherited sharing class QueryBuilder {
         this.queryLimit = 0;
         this.queryOffset = 0;
         this.countResult = null;
-        this.checkFls = true;
+        this.checkCrud = false;
+        this.checkFls = false;
         this.updateTracking = false;
         this.updateViewstat = false;
         this.forView = false;
         this.forReference = false;
         this.withSecurityEnforced = false;
-        this.scope = FilterScope.EVERYTHING;
+        this.scope = FilterScope.Everything;
     }
 
     /**
@@ -121,7 +122,6 @@ public virtual inherited sharing class QueryBuilder {
      */
     public QueryBuilder(SObjectType type) {
         this();
-        this.setWithSecurityEnforced(true);
         this.fromSobject = type.getDescribe().getName();
     }
 
@@ -141,7 +141,6 @@ public virtual inherited sharing class QueryBuilder {
      */
     public QueryBuilder(Type type) {
         this();
-        this.setWithSecurityEnforced(true);
         this.fromSobject = type.getName();
     }
 
@@ -161,7 +160,6 @@ public virtual inherited sharing class QueryBuilder {
      */
     public QueryBuilder(SObject sobj) {
         this(sobj.getSObjectType());
-        this.setWithSecurityEnforced(true);
     }
 
     /**
@@ -457,8 +455,7 @@ public virtual inherited sharing class QueryBuilder {
     }
 
     /**
-     * Adds all accessible fields of the sobject, specified in param as a string name.
-     * if (securityEnforced == true) only add accessable fields
+     * Adds all fields of the sobject, specified in param as a string name.
      *
      * <br/><br/>
      * <p><b>Example</b></p>
@@ -474,22 +471,8 @@ public virtual inherited sharing class QueryBuilder {
      * @return this - current instance of QueryBuilder.class
      */
     public QueryBuilder addFieldsAll(String sobjectName) {
-        Map<String, Schema.SObjectField> fieldMap = Schema.getGlobalDescribe()
-            .get(sobjectName)
-            .getDescribe()
-            .fields.getMap();
-        String fieldName;
-        for (Schema.SObjectField fld : fieldMap.values()) {
-            fieldName = fld.getDescribe().getName();
-            // TODO: special case - only failed in PendingDMLOperations
-            if (
-                fieldName.toLowerCase() != 'lastreferenceddate' &&
-                fieldName.toLowerCase() != 'lastvieweddate' &&
-                fld.getDescribe().isAccessible()
-            ) {
-                this.fieldTokens.add(fieldName);
-            }
-        }
+        Set<String> fieldNames = Schema.getGlobalDescribe().get(sobjectName).getDescribe().fields.getMap().keySet();
+        this.fieldTokens.addAll(fieldNames);
         return this;
     }
 
@@ -589,10 +572,8 @@ public virtual inherited sharing class QueryBuilder {
      * @return this - current instance of QueryBuilder.class
      */
     public QueryBuilder addFieldsAllCreatable(String sobjectName) {
-        Schema.SObjectType objectType = Schema.getGlobalDescribe()
-            .get(sobjectName);
-        Map<String, Schema.SObjectField> fieldMap = objectType.getDescribe()
-            .fields.getMap();
+        Schema.SObjectType objectType = Schema.getGlobalDescribe().get(sobjectName);
+        Map<String, Schema.SObjectField> fieldMap = objectType.getDescribe().fields.getMap();
 
         Set<String> createableFields = new Set<String>();
         for (Schema.SObjectField field : fieldMap.values()) {
@@ -703,12 +684,11 @@ public virtual inherited sharing class QueryBuilder {
      * @return this - current instance of QueryBuilder.class
      */
     public QueryBuilder addFieldsAllUpdatable(String sobjectName) {
-        Schema.SObjectType objectType = Schema.getGlobalDescribe()
-            .get(sobjectName);
-        Map<String, Schema.SObjectField> fieldMap = objectType.getDescribe()
-            .fields.getMap();
+        Schema.SObjectType objectType = Schema.getGlobalDescribe().get(sobjectName);
+        Map<String, Schema.SObjectField> fieldMap = objectType.getDescribe().fields.getMap();
 
-        Set<String> updateableFields = new Set<String>{};
+        Set<String> updateableFields = new Set<String>{
+        };
         for (Schema.SObjectField field : fieldMap.values()) {
             DescribeFieldResult fieldDescribe = field.getDescribe();
             if (fieldDescribe.isUpdateable()) {
@@ -800,11 +780,8 @@ public virtual inherited sharing class QueryBuilder {
         Set<String> result = new Set<String>();
         Map<String, Schema.SObjectType> globalDescribeMap = Schema.getGlobalDescribe();
         Schema.SObjectType sObjectTypeObj = GlobalDescribeMap.get(objectName);
-        List<Schema.FieldSetMember> fields = sObjectTypeObj.getDescribe()
-            .FieldSets.getMap()
-            .get(fieldSetName)
-            .getFields();
-        for (Schema.FieldSetMember fieldSetMember : fields) {
+        List<FieldSetMember> fields = sObjectTypeObj.getDescribe().FieldSets.getMap().get(fieldSetName).getFields();
+        for (FieldSetMember fieldSetMember : fields) {
             result.add(fieldSetMember.getFieldPath());
         }
         this.fieldTokens.addAll(result);
@@ -830,7 +807,7 @@ public virtual inherited sharing class QueryBuilder {
      */
     public QueryBuilder addFieldSet(FieldSet fieldSet) {
         Set<String> fieldNames = new Set<String>();
-        for (Schema.FieldSetMember fieldSetMember : fieldSet.getFields()) {
+        for (FieldSetMember fieldSetMember : fieldSet.getFields()) {
             fieldNames.add(fieldSetMember.getFieldPath());
         }
         this.fieldTokens.addAll(fieldNames);
@@ -898,17 +875,6 @@ public virtual inherited sharing class QueryBuilder {
      */
     public ConditionsManager addConditionsWithOrder(String conditionOrder) {
         return this.conditionsManager.setConditionOrder(conditionOrder);
-    }
-
-    /**
-     * Sets a limit for current query. Accepts an integer.
-     *
-     * @param queryLimit
-     *
-     * @return this - current instance of QueryBuilder.class
-     */
-    public QueryBuilder setLimit(Decimal queryLimit) {
-        return setLimit((Integer) queryLimit);
     }
 
     /**
@@ -1330,7 +1296,25 @@ public virtual inherited sharing class QueryBuilder {
     }
 
     /**
-     * Enables CRUD and FLS check for current query, throw a generic exception if any are missing
+     * Enables or disables CRUD and FLS check for current query.
+     * Default is disabled.
+     * <br/>
+     * Enabled CRUD check throws an System.NoAccessException if current user doesn't have access to an SObject.
+     * <br/>
+     * Enabled FLS check removes a field from result.
+     *
+     * @param checkCrudAndFls
+     *
+     * @return this - current instance of QueryBuilder.class
+     */
+    public QueryBuilder setCheckCRUDAndFLS(Boolean checkCrudAndFls) {
+        this.setCheckCRUD(checkCrudAndFls);
+        return this.setCheckFLS(checkCrudAndFls);
+    }
+
+    /**
+     * <h1>THIS IS BETA FUNCTIONALITY</h1>
+     * Enables CRUD and FLS check for current query.
      *
      * @return this - current instance of QueryBuilder.class
      */
@@ -1339,13 +1323,52 @@ public virtual inherited sharing class QueryBuilder {
     }
 
     /**
-     * Enables CRUD and FLS check for current query, throw a generic exception if any are missing
+     * <h1>THIS IS BETA FUNCTIONALITY</h1>
+     * Enables CRUD and FLS check for current query.
      *
      * @return this - current instance of QueryBuilder.class
      */
     public QueryBuilder setWithSecurityEnforced(Boolean withSecurityEnforced) {
         this.withSecurityEnforced = withSecurityEnforced;
         return this;
+    }
+
+    /**
+     * Enables CRUD and FLS check for current query.
+     * <br/>
+     * Enabled CRUD check throws an System.NoAccessException if current user doesn't have access to an SObject.
+     * <br/>
+     * Enabled FLS check removes a field from result.
+     *
+     * @return this - current instance of QueryBuilder.class
+     */
+    public QueryBuilder setCheckCRUDAndFLS() {
+        return this.setCheckCRUDAndFLS(true);
+    }
+
+    /**
+     * Enables or disables CRUD check for current query.
+     * <br/>
+     * Enabled CRUD check throws an System.NoAccessException if current user doesn't have access to an SObject.
+     *
+     * @param checkCrud
+     *
+     * @return this - current instance of QueryBuilder.class
+     */
+    public QueryBuilder setCheckCRUD(Boolean checkCrud) {
+        this.checkCrud = checkCrud;
+        return this;
+    }
+
+    /**
+     * Enables CRUD check for current query.
+     * <br/>
+     * Enabled CRUD check throws an System.NoAccessException if current user doesn't have access to an SObject.
+     *
+     * @return this - current instance of QueryBuilder.class
+     */
+    public QueryBuilder setCheckCRUD() {
+        return this.setCheckCRUD(true);
     }
 
     /**
@@ -1375,19 +1398,6 @@ public virtual inherited sharing class QueryBuilder {
     }
 
     /**
-     * Prevents changes to queries and their results
-     * <br/>
-     * Enabled query modifications changes certain query results in
-     * Digital_Asset__c & Attribute_Value__c
-     *
-     * @return this - current instance of QueryBuilder.class
-     */
-    public QueryBuilder disableQueryModifications() {
-        this.allowQueryModfications = false;
-        return this;
-    }
-
-    /**
      * Returns an instance of StubbedQueryBuilder, which can be used in Unit Tests.
      *
      * @return a new instance of QueryBuilder.StubbedQueryBuilder.class
@@ -1403,11 +1413,10 @@ public virtual inherited sharing class QueryBuilder {
      * @return this - current instance of QueryBuilder.class
      */
     public QueryBuilder preview() {
-        String logRecord =
-            '\n============RESULTING QUERY============\n\n' +
-            this.toString() +
-            '\n\n=======================================\n';
-        System.debug(LoggingLevel.warn, logRecord);
+        String logRecord = '\n============RESULTING QUERY============\n\n'
+                + this.toString()
+                + '\n\n=======================================\n';
+        System.debug(logRecord);
         return this;
     }
 
@@ -1421,13 +1430,34 @@ public virtual inherited sharing class QueryBuilder {
         if (this.countResult == null) {
             this.countResult = this.toCount();
         }
-        String logRecord =
-            '\n============COUNT RESULT============\n\n' +
-            'Query will return exactly: ' +
-            this.countResult +
-            ' record(s).' +
-            '\n\n=======================================\n';
+        String logRecord = '\n============COUNT RESULT============\n\n'
+                + 'Query will return exactly: ' + this.countResult + ' record(s).'
+                + '\n\n=======================================\n';
         System.debug(logRecord);
+        return this;
+    }
+
+    /**
+     * Nullifies and re-creates all of the fields in current QueryBuilder instance.
+     *
+     * @return this - current instance of QueryBuilder.class
+     */
+    public QueryBuilder newQuery() {
+        this.fieldTokens = new Set<String>();
+        this.groupByFields = new Set<String>();
+        this.sortingOrder = new List<Order>();
+        this.conditionsManager = new ConditionsManager(this);
+        this.queryLimit = 0;
+        this.queryOffset = 0;
+        this.countResult = null;
+        this.checkCrud = false;
+        this.checkFls = false;
+        this.updateTracking = false;
+        this.updateViewstat = false;
+        this.forView = false;
+        this.forReference = false;
+        this.withSecurityEnforced = false;
+        this.scope = FilterScope.Everything;
         return this;
     }
 
@@ -1450,9 +1480,6 @@ public virtual inherited sharing class QueryBuilder {
     public override String toString() {
         String result = 'SELECT ';
         String fields = '';
-        this.fieldTokens = this.allowQueryModfications
-            ? QueryBuilderLifecycleService.preQueryFieldInjection(this)
-            : this.fieldTokens;
         if (this.fieldTokens.isEmpty()) {
             fields = 'Id';
         } else {
@@ -1472,8 +1499,7 @@ public virtual inherited sharing class QueryBuilder {
 
         if (!this.groupByFields.isEmpty()) {
             result += 'GROUP BY ';
-            result +=
-                String.join(new List<String>(this.groupByFields), ', ') + ' \n';
+            result += String.join(new List<String>(this.groupByFields), ', ') + ' \n';
         }
         if (!this.sortingOrder.isEmpty()) {
             result += 'ORDER BY ';
@@ -1490,10 +1516,7 @@ public virtual inherited sharing class QueryBuilder {
             result += 'OFFSET ' + this.queryOffset + ' \n';
         }
 
-        if (
-            (this.forView && !this.forReference) ||
-            (this.forView && this.forReference)
-        ) {
+        if ((this.forView && !this.forReference) || (this.forView && this.forReference)) {
             result += 'FOR VIEW \n';
         }
         if (!this.forView && this.forReference) {
@@ -1510,7 +1533,8 @@ public virtual inherited sharing class QueryBuilder {
             result += 'UPDATE VIEWSTAT';
         }
 
-        return result.trim().normalizeSpace();
+
+        return result.trim();
     }
 
     /**
@@ -1553,69 +1577,26 @@ public virtual inherited sharing class QueryBuilder {
     }
 
     /**
-     * Executes a query or returns already executed result as a list of SObjects, default is a security check of each field
-     * security choices :
-     * withSecurityEnforced TRUE    throw an exception if any field is hidden
-     * checkFls == TRUE             throw an exception with specific field info
-     * checkFls == FALSE && withSecurityEnforced == FALSE    no checking, use only to meet specific business requirements
+     * Executes a query or returns already executed result as a list of SObjects
      *
      * @return list of SObjects
      */
     public List<SObject> toList() {
-        try {
-            if (this.result == null) {
+        if (this.result == null) {
+            List<SObject> result = Database.query(this.toString());
+            SObjectReadValidator sObjectReadValidator;
+            if (this.checkCrud || this.checkFls) {
+                SObjectReadValidator = new SObjectReadValidator(result);
+                if (this.checkCrud) {
+                    sObjectReadValidator.checkObjectAccess();
+                }
                 if (this.checkFls) {
-                    this.withSecurityEnforced = false; // avoid access exception, throw from the query, we will check fields after
+                    SObjectReadValidator.checkFieldsAccess();
                 }
-
-                SObjectAccessDecision decision = Security.stripInaccessible(
-                    AccessType.READABLE,
-                    Database.query(this.toString()),
-                    true // CRUD check on the root object
-                );
-                this.result = decision.getRecords();
-                this.result = this.allowQueryModfications
-                    ? QueryBuilderLifecycleService.postQueryOperations(
-                          this.result
-                      )
-                    : this.result;
-
-                Map<String, Set<String>> removedFields = decision.getRemovedFields();
-                if (!removedFields.isEmpty()) {
-                    List<String> fields = new List<String>();
-                    for (String sob : removedFields.keySet()) {
-                        System.debug(
-                            LoggingLevel.WARN,
-                            'query was sripped :' + this.toString()
-                        );
-                        System.debug(
-                            LoggingLevel.WARN,
-                            '   removed fields :' +
-                            removedFields.get(sob).toString()
-                        );
-                        fields.add(sob + ' : ' + removedFields.get(sob));
-                    }
-                    if (this.checkFls) {
-                        throw new QueryException(
-                            'Missing read permission on fields ' +
-                            fields.toString()
-                        );
-                    }
-                }
-
-                this.result = result;
             }
-            return this.result;
-        } catch (Exception e) {
-            // Security.stripInaccessible will throw in Mocks
-            if (Test.isRunningTest()) { return new List<SObject>(); }
-            throw new QueryException(
-                QueryBuilder.class.getName() +
-                e.getMessage() +
-                '. Query: '
-                + this.toString()
-            );
+            this.result = result;
         }
+        return this.result;
     }
 
     /**
@@ -1625,18 +1606,6 @@ public virtual inherited sharing class QueryBuilder {
      */
     public Map<Id, SObject> toMap() {
         return new Map<Id, SObject>(this.toList());
-    }
-
-    /**
-     * Executes a query or returns already executed result as a map of SObjects, keyed by a new field
-     *
-     * @param fieldValueAsKey field of SObject to serve as key. field should be marked as unique on SObject
-     *
-     * @return map of SObjects by field value
-     */
-    public Map<Object, SObject> toMapOnKey(String fieldValueAsKey) {
-        List<SObject> sobjs = this.toList();
-        return PIM.mappifyWithFieldAsKey(sobjs, fieldValueAsKey);
     }
 
     /**
@@ -1752,9 +1721,7 @@ public virtual inherited sharing class QueryBuilder {
         QueryBuilder result = new QueryBuilder(this.fromSobject);
         result.addFields(this.fieldTokens);
         result.addGroupBy(this.groupByFields);
-        result.conditionsManager = this.conditionsManager.cloneConditionsManager(
-            result
-        );
+        result.conditionsManager = this.conditionsManager.cloneConditionsManager(result);
         result.setLimit(this.queryLimit);
         if (includeResult && this.result != null && !this.result.isEmpty()) {
             result.result = new List<SObject>(this.result);
@@ -1770,29 +1737,22 @@ public virtual inherited sharing class QueryBuilder {
      * @version 1.0
      */
     public class ConditionsManager {
-        private final String bracketL = '{';
-        private final String bracketR = '}';
+
+        private final String BRACKET_L = '{';
+        private final String BRACKET_R = '}';
 
         public List<Condition> conditions;
         private String conditionOrder;
         private final QueryBuilder queryBuilder;
 
-        public String builtCondition;
-
-        // do not ever use this. this is purely for StubAPI.
-        public ConditionsManager() {
-            this.queryBuilder = new QueryBuilder();
-            this.conditions = new List<Condition>();
-        }
+        private String builtCondition;
 
         public ConditionsManager(QueryBuilder queryBuilder) {
             this.queryBuilder = queryBuilder;
             this.conditions = new List<Condition>();
         }
 
-        public ConditionsManager cloneConditionsManager(
-            QueryBuilder queryBuilder
-        ) {
+        public ConditionsManager cloneConditionsManager(QueryBuilder queryBuilder) {
             ConditionsManager result = new ConditionsManager(queryBuilder);
             result.conditions = new List<Condition>(this.conditions);
             result.conditionOrder = conditionOrder;
@@ -1802,423 +1762,12 @@ public virtual inherited sharing class QueryBuilder {
 
         public ConditionsManager add(Condition condition) {
             if (condition instanceof ObjectTypeDependentCondition) {
-                ((ObjectTypeDependentCondition) condition)
-                    .setRelatedObjectType(this.queryBuilder.fromSobject);
+                ((ObjectTypeDependentCondition) condition).setRelatedObjectType(this.queryBuilder.fromSobject);
             }
             if (condition.isEmpty()) {
                 return this;
             }
-
             this.conditions.add(condition);
-            return this;
-        }
-
-        public ConditionsManager addAttrValPolymorphicEqualCondition(
-            Id recordId
-        ) {
-            return addAttrValPolymorphicEqualCondition(recordId, false);
-        }
-
-        public ConditionsManager addAttrValPolymorphicEqualCondition(
-            Id recordId,
-            Boolean strict
-        ) {
-            attrValCheck();
-            this.conditions.add(
-                new QueryBuilder.CompareCondition(
-                        getAttrValLookupRecordFieldName(recordId)
-                    )
-                    .eq(recordId)
-            );
-            if (
-                !strict ||
-                recordId.getSObjectType() != Product__c.getSObjectType()
-            ) {
-                return this;
-            }
-
-            injectStrictConditions();
-            return this;
-        }
-
-        public ConditionsManager addAttrValPolymorphicInCondition(
-            List<Id> recordIds
-        ) {
-            return addAttrValPolymorphicInCondition(recordIds, false);
-        }
-
-        public ConditionsManager addAttrValPolymorphicInCondition(
-            List<Id> recordIds,
-            Boolean strict
-        ) {
-            if (recordIds == null || recordIds.size() == 0) {
-                return this;
-            }
-            attrValCheck();
-
-            this.conditions.add(
-                new QueryBuilder.InCondition(
-                        getAttrValLookupRecordFieldName(recordIds[0])
-                    )
-                    .inCollection(recordIds)
-            );
-            if (
-                !strict ||
-                recordIds[0].getSObjectType() != Product__c.getSObjectType()
-            ) {
-                return this;
-            }
-
-            injectStrictConditions();
-            return this;
-        }
-
-        private void attrValCheck() {
-            String lowerCased = PIM.stripNamespaceToLowercase(
-                this.queryBuilder.fromSObject
-            );
-            String lowerCaseAttrValString = 'attribute_value__c';
-            if (lowerCased != lowerCaseAttrValString) {
-                throw new QueryException(
-                    'Source SObject is not attribute_value__c, but is instead: ' +
-                    lowerCased
-                );
-            }
-        }
-
-        private void injectStrictConditions() {
-            this.setConditionOrder('1 AND 2');
-            this.conditions.add(
-                new QueryBuilder.NullCondition('Overwritten_Variant_Value__c')
-                    .isNull()
-            );
-        }
-
-        private String getAttrValLookupRecordFieldName(Id recordId) {
-            Schema.SObjectType objectType = recordId.getSobjectType();
-            if (objectType == Product__c.getSObjectType()) {
-                return 'Product__c';
-            } else if (objectType == Digital_Asset__c.getSObjectType()) {
-                return 'Digital_Asset__c';
-            } else if (objectType == Variant_Value__c.getSObjectType()) {
-                return 'Overwritten_Variant_Value__c';
-            }
-            return null;
-        }
-
-        public ConditionsManager translatePQLCriteriaIntoConditions(
-            List<Map<String, Object>> formattedCriteriaList
-        ) {
-            return translatePQLCriteriaIntoConditions(
-                formattedCriteriaList,
-                false
-            );
-        }
-
-        public ConditionsManager translatePQLCriteriaIntoConditions(
-            List<Map<String, Object>> formattedCriteriaList,
-            Boolean preserveOrder
-        ) {
-            Set<String> categoryIds = new Set<String>();
-            Set<String> tpIds = new Set<String>();
-            String prevField = '';
-            Integer currNumConditions;
-            for (Map<String, Object> criteriaMap : formattedCriteriaList) {
-                currNumConditions = this.conditions.size();
-                String critFieldName = String.valueOf(
-                    criteriaMap.get(PQLHelper.KEY_FIELD)
-                );
-                String valType = String.valueOf(
-                    criteriaMap.get(PQLHelper.KEY_TYPE)
-                );
-                String value = String.valueOf(
-                    criteriaMap.get(PQLHelper.KEY_VALUE)
-                );
-                String valueFrom = String.valueOf(
-                    criteriaMap.get(PQLHelper.KEY_VALUE_FROM)
-                );
-                String valueTo = String.valueOf(
-                    criteriaMap.get(PQLHelper.KEY_VALUE_TO)
-                );
-                String conditionType = String.valueOf(
-                    criteriaMap.get(PQLHelper.KEY_CONDITION)
-                );
-
-                // hasMultiple indicates whether or not a the field of current criterion is used more than once.
-                Boolean hasMultiple =
-                    String.valueOf(criteriaMap.get(PQLHelper.HAS_MULTIPLE)) ==
-                    'true';
-                if (hasMultiple && prevField != critFieldName) {
-                    prevField = critFieldName;
-                }
-
-                String[] fieldChain = critFieldName.split('\\.');
-
-                if (!PQLHelper.ACCEPTABLE_CONDITIONS.contains(conditionType)) {
-                    throw new QueryBuilderException(
-                        'Unexpected condition type: ' + conditionType
-                    );
-                }
-
-                if (value == null) {
-                    if (conditionType == 'eq' || conditionType == 'includes') {
-                        conditionType = 'isNull';
-                    } else if (
-                        conditionType == 'ne' ||
-                        conditionType == 'excludes'
-                    ) {
-                        conditionType = 'notNull';
-                    }
-                }
-
-                if (valType == 'multipicklist' && value != null) {
-                    // TODO: need smart way to deal with inCollection/notIn
-                    // value = PQLHelper.parseMultipicklistCondition(criteriaMap);
-                }
-                if (valType == 'string' && value != null) {
-                    value = value.trim();
-                }
-
-                if (conditionType == 'eq' || conditionType == 'ne') {
-                    Boolean valueBool = valType == 'boolean'
-                        ? Boolean.valueOf(value)
-                        : null;
-                    Boolean valueImage = valType == 'image'
-                        ? Boolean.valueOf(value)
-                        : null;
-                    Decimal valueDecimal = valType == 'decimal'
-                        ? Decimal.valueOf(value)
-                        : null;
-                    if (conditionType == 'eq') {
-                        if (
-                            valType == 'string' ||
-                            valType == 'picklist' ||
-                            valType == 'multipicklist' ||
-                            valType == 'lookup'
-                        ) {
-                            this.add(
-                                new QueryBuilder.CompareCondition(critFieldName)
-                                    .eq(value)
-                            );
-                        } else if (valType == 'date' || valType == 'datetime') {
-                            this.add(
-                                new QueryBuilder.CompareCondition(critFieldName)
-                                    .eq(value, false)
-                            );
-                        } else if (valType == 'decimal') {
-                            this.add(
-                                new QueryBuilder.CompareCondition(critFieldName)
-                                    .eq(valueDecimal)
-                            );
-                        } else if (valType == 'boolean') {
-                            this.add(
-                                new QueryBuilder.CompareCondition(critFieldName)
-                                    .eq(valueBool)
-                            );
-                        } else if (valType == 'image') {
-                            // can't put calculated formula fields like image__c and thumbnail_img__c into where clause
-                            critFieldName = critFieldName.toLowerCase()
-                                .replaceAll('image__c$', 'external_image__c')
-                                .replaceAll(
-                                    'thumbnail_img__c$',
-                                    'thumbnail__c'
-                                );
-
-                            if (valueImage) {
-                                this.add(
-                                    new QueryBuilder.NullCondition(
-                                            critFieldName
-                                        )
-                                        .notNull()
-                                );
-                            } else {
-                                this.add(
-                                    new QueryBuilder.NullCondition(
-                                            critFieldName
-                                        )
-                                        .isNull()
-                                );
-                            }
-                        }
-                    } else if (conditionType == 'ne') {
-                        if (
-                            valType == 'string' ||
-                            valType == 'picklist' ||
-                            valType == 'multipicklist' ||
-                            valType == 'lookup'
-                        ) {
-                            this.add(
-                                new QueryBuilder.CompareCondition(critFieldName)
-                                    .ne(value)
-                            );
-                        } else if (valType == 'date' || valType == 'datetime') {
-                            this.add(
-                                new QueryBuilder.CompareCondition(critFieldName)
-                                    .ne(value, false)
-                            );
-                        } else if (valType == 'decimal') {
-                            this.add(
-                                new QueryBuilder.CompareCondition(critFieldName)
-                                    .ne(valueDecimal)
-                            );
-                        } else if (valType == 'boolean') {
-                            this.add(
-                                new QueryBuilder.CompareCondition(critFieldName)
-                                    .ne(valueBool)
-                            );
-                        }
-                    }
-                } else if (conditionType == 'btw') {
-                    if (valType == 'decimal') {
-                        this.add(
-                            new QueryBuilder.CompareCondition(critFieldName)
-                                .gte(Decimal.valueOf(valueFrom))
-                        );
-                        this.add(
-                            new QueryBuilder.CompareCondition(critFieldName)
-                                .lte(Decimal.valueOf(valueTo))
-                        );
-                    } else if (valType == 'date' || valType == 'datetime') {
-                        this.add(
-                            new QueryBuilder.CompareCondition(critFieldName)
-                                .gte(valueFrom)
-                        );
-                        this.add(
-                            new QueryBuilder.CompareCondition(critFieldName)
-                                .lte(valueTo)
-                        );
-                    }
-                } else if (conditionType == 'lt') {
-                    if (valType == 'decimal') {
-                        this.add(
-                            new QueryBuilder.CompareCondition(critFieldName)
-                                .lt(Decimal.valueOf(value))
-                        );
-                    } else if (valType == 'date' || valType == 'datetime') {
-                        this.add(
-                            new QueryBuilder.CompareCondition(critFieldName)
-                                .lt(value)
-                        );
-                    }
-                } else if (conditionType == 'gt') {
-                    if (valType == 'decimal') {
-                        this.add(
-                            new QueryBuilder.CompareCondition(critFieldName)
-                                .gt(Decimal.valueOf(value))
-                        );
-                    } else if (valType == 'date' || valType == 'datetime') {
-                        this.add(
-                            new QueryBuilder.CompareCondition(critFieldName)
-                                .gt(value)
-                        );
-                    }
-                } else if (conditionType == 'lte') {
-                    if (valType == 'decimal') {
-                        this.add(
-                            new QueryBuilder.CompareCondition(critFieldName)
-                                .lte(Decimal.valueOf(value))
-                        );
-                    } else if (valType == 'date' || valType == 'datetime') {
-                        this.add(
-                            new QueryBuilder.CompareCondition(critFieldName)
-                                .lte(value)
-                        );
-                    }
-                } else if (conditionType == 'gte') {
-                    if (valType == 'decimal') {
-                        this.add(
-                            new QueryBuilder.CompareCondition(critFieldName)
-                                .gte(Decimal.valueOf(value))
-                        );
-                    } else if (valType == 'date' || valType == 'datetime') {
-                        this.add(
-                            new QueryBuilder.CompareCondition(critFieldName)
-                                .gte(value)
-                        );
-                    }
-                } else if (conditionType == 'isNull') {
-                    this.add(
-                        new QueryBuilder.NullCondition(critFieldName).isNull()
-                    );
-                } else if (conditionType == 'notNull') {
-                    this.add(
-                        new QueryBuilder.NullCondition(critFieldName).notNull()
-                    );
-                } else if (conditionType == 'likeAnyBoth') {
-                    this.add(
-                        new QueryBuilder.LikeCondition(critFieldName)
-                            .likeAnyBoth(value)
-                    );
-                } else if (conditionType == 'likeAnyLeft') {
-                    this.add(
-                        new QueryBuilder.LikeCondition(critFieldName)
-                            .likeAnyLeft(value)
-                    );
-                } else if (conditionType == 'likeAnyRight') {
-                    this.add(
-                        new QueryBuilder.LikeCondition(critFieldName)
-                            .likeAnyRight(value)
-                    );
-                } else if (
-                    (conditionType == 'inCollection' ||
-                    conditionType == 'notIn') && valType == 'list'
-                ) {
-                    List<Object> listOfObj = new List<Object>();
-                    List<String> listOfString = new List<String>();
-
-                    if (
-                        criteriaMap.get(PQLHelper.KEY_VALUE) instanceof String
-                    ) {
-                        String toSplit = (String) criteriaMap.get(
-                            PQLHelper.KEY_VALUE
-                        );
-                        listOfString = toSplit.split(',');
-                    } else {
-                        listOfObj = (List<Object>) criteriaMap.get(
-                            PQLHelper.KEY_VALUE
-                        );
-                        for (Object obj : listOfObj) {
-                            listOfString.add(String.valueOf(obj));
-                        }
-                    }
-                    if (conditionType == 'inCollection') {
-                        this.add(
-                            new QueryBuilder.InCondition(critFieldName)
-                                .inCollection(listOfString)
-                        );
-                    } else if (conditionType == 'notIn') {
-                        this.add(
-                            new QueryBuilder.InCondition(critFieldName)
-                                .notIn(listOfString)
-                        );
-                    }
-                } else if (
-                    conditionType == 'includes' ||
-                    conditionType == 'excludes'
-                ) {
-                    if (conditionType == 'includes') {
-                        this.add(
-                            new QueryBuilder.IncludesCondition(critFieldName)
-                                .includes(value)
-                        );
-                    } else if (conditionType == 'excludes') {
-                        this.add(
-                            new QueryBuilder.IncludesCondition(critFieldName)
-                                .excludes(value)
-                        );
-                    }
-                } else {
-                    throw new QueryBuilderException(
-                        'PQL Criteria not constructed correctly: ' + criteriaMap
-                    );
-                }
-                if (currNumConditions == this.conditions.size()) {
-                    throw new QueryBuilderException(
-                        'No criteria added, criteria not constructed correctly: ' +
-                        criteriaMap
-                    );
-                }
-            }
             return this;
         }
 
@@ -2230,22 +1779,6 @@ public virtual inherited sharing class QueryBuilder {
         }
 
         public ConditionsManager setConditionOrder(String conditionOrder) {
-            /** MVP-14237 Need to add empty space at start/end of condition order */
-            if (!conditionOrder.startsWith(' ')) {
-                conditionOrder = ' ' + conditionOrder;
-            }
-            if (!conditionOrder.endsWith(' ')) {
-                conditionOrder += ' ';
-            }
-            conditionOrder = conditionOrder
-                .replace(' ( ', '(')
-                .replace('( ', '(')
-                .replace(' (', '(')
-                .replace('(', ' ( ')
-                .replace(' ) ', ')')
-                .replace(') ', ')')
-                .replace(' )', ')')
-                .replace(')', ' ) ');
             this.conditionOrder = conditionOrder;
             return this;
         }
@@ -2258,47 +1791,37 @@ public virtual inherited sharing class QueryBuilder {
         public override String toString() {
             String result = this.conditionOrder;
             if (String.isEmpty(result)) {
-                result = ' 1 ';
+                result = '1';
             }
             result = this.bracketConditions(result);
             for (Integer i = 0; i < this.conditions.size(); i++) {
                 Condition condition = this.conditions[i];
                 if (condition instanceof ObjectTypeDependentCondition) {
-                    ((ObjectTypeDependentCondition) condition)
-                        .setRelatedObjectType(this.queryBuilder.fromSobject);
+                    ((ObjectTypeDependentCondition) condition).setRelatedObjectType(this.queryBuilder.fromSobject);
                 }
                 String conditionNumber = this.bracket('' + (i + 1));
                 if (result.contains(conditionNumber)) {
-                    result = result.replace(
-                        conditionNumber,
-                        condition.toString()
-                    );
+                    result = result.replace(conditionNumber, condition.toString());
                 }
             }
-            return result.trim();
+            return result;
         }
 
-        public Boolean hasConditions() {
-            return (!this.conditions.isEmpty() ||
-            (String.isNotEmpty(this.builtCondition) &&
-            !this.builtCondition.startsWith('1')));
+        private Boolean hasConditions() {
+            return !this.conditions.isEmpty();
         }
 
         private String bracketConditions(String conditions) {
             this.conditions.size();
             for (Integer i = 1; i <= this.conditions.size(); i++) {
-                /** MVP-14237 Add white spaces to ensure correct condition number is replaced */
-                String conditionNumber = ' ' + i + ' ';
-                conditions = conditions.replace(
-                    conditionNumber,
-                    ' ' + this.bracket(conditionNumber) + ' '
-                );
+                String conditionNumber = '' + i;
+                conditions = conditions.replaceFirst(conditionNumber, this.bracket(conditionNumber));
             }
             return conditions;
         }
 
         private String bracket(String condition) {
-            return this.bracketL + condition.trim() + this.bracketR;
+            return this.BRACKET_L + condition.trim() + this.BRACKET_R;
         }
     }
 
@@ -2309,9 +1832,10 @@ public virtual inherited sharing class QueryBuilder {
      * @version 1.0
      */
     public abstract class Condition {
-        public final String quote = '\'';
-        public final String bracketL = '(';
-        public final String bracketR = ')';
+
+        public final String QUOTE = '\'';
+        public final String BRACKET_L = '(';
+        public final String BRACKET_R = ')';
         protected String formedCondition;
 
         public Condition() {
@@ -2319,14 +1843,11 @@ public virtual inherited sharing class QueryBuilder {
         }
 
         protected String quote(String field) {
-            String trimmedField = String.isBlank(field)
-                ? ''
-                : String.escapeSingleQuotes(field.trim());
-            return this.quote + trimmedField + this.quote;
+            return this.QUOTE + String.escapeSingleQuotes(field.trim()) + this.QUOTE;
         }
 
         protected String bracket(String field) {
-            return bracketL + field.trim() + bracketR;
+            return BRACKET_L + field.trim() + BRACKET_R;
         }
 
         public virtual override String toString() {
@@ -2339,6 +1860,7 @@ public virtual inherited sharing class QueryBuilder {
     }
 
     public class SimpleCondition extends Condition {
+
         public SimpleCondition() {
             super();
         }
@@ -2357,6 +1879,7 @@ public virtual inherited sharing class QueryBuilder {
      * @version 1.0
      */
     public abstract class FieldCondition extends Condition {
+
         protected String fieldName;
 
         public FieldCondition(String fieldName) {
@@ -2375,6 +1898,7 @@ public virtual inherited sharing class QueryBuilder {
     }
 
     public class NullCondition extends FieldCondition {
+
         public NullCondition(String fieldName) {
             super(fieldName);
         }
@@ -2396,6 +1920,7 @@ public virtual inherited sharing class QueryBuilder {
     }
 
     public class CompareCondition extends FieldCondition {
+
         public CompareCondition(String fieldName) {
             super(fieldName);
         }
@@ -2406,22 +1931,12 @@ public virtual inherited sharing class QueryBuilder {
 
         //string
         public Condition eq(String fieldValue) {
-            return eq(fieldValue, true);
-        }
-
-        public Condition eq(String fieldValue, Boolean withQuote) {
-            String val = withQuote ? this.quote(fieldValue) : fieldValue;
-            this.formedCondition = this.fieldName + ' = ' + val;
+            this.formedCondition = this.fieldName + ' = ' + this.quote(fieldValue);
             return this;
         }
 
         public Condition ne(String fieldValue) {
-            return ne(fieldValue, true);
-        }
-
-        public Condition ne(String fieldValue, Boolean withQuote) {
-            String val = withQuote ? this.quote(fieldValue) : fieldValue;
-            this.formedCondition = this.fieldName + ' != ' + val;
+            this.formedCondition = this.fieldName + ' != ' + this.quote(fieldValue);
             return this;
         }
 
@@ -2442,11 +1957,6 @@ public virtual inherited sharing class QueryBuilder {
             return this;
         }
 
-        public Condition ne(Decimal fieldValue) {
-            this.formedCondition = this.fieldName + ' != ' + fieldValue;
-            return this;
-        }
-
         public Condition lt(Decimal fieldValue) {
             this.formedCondition = this.fieldName + ' < ' + fieldValue;
             return this;
@@ -2462,25 +1972,13 @@ public virtual inherited sharing class QueryBuilder {
             return this;
         }
 
-        public Condition gte(Decimal fieldValue) {
-            this.formedCondition = this.fieldName + ' >= ' + fieldValue;
-            return this;
-        }
-
-        // Date string. e.g. TODAY, YESTERDAY, etc...
-
-        public Condition lt(String fieldValue) {
-            this.formedCondition = this.fieldName + ' < ' + fieldValue;
-            return this;
-        }
-
-        public Condition gt(String fieldValue) {
-            this.formedCondition = this.fieldName + ' > ' + fieldValue;
-            return this;
-        }
-
         public Condition lte(String fieldValue) {
             this.formedCondition = this.fieldName + ' <= ' + fieldValue;
+            return this;
+        }
+
+        public Condition gte(Decimal fieldValue) {
+            this.formedCondition = this.fieldName + ' >= ' + fieldValue;
             return this;
         }
 
@@ -2488,9 +1986,15 @@ public virtual inherited sharing class QueryBuilder {
             this.formedCondition = this.fieldName + ' >= ' + fieldValue;
             return this;
         }
+
+        public Condition ne(Decimal fieldValue) {
+            this.formedCondition = this.fieldName + ' != ' + fieldValue;
+            return this;
+        }
     }
 
     public class LikeCondition extends FieldCondition {
+
         public LikeCondition(String fieldName) {
             super(fieldName);
         }
@@ -2501,41 +2005,28 @@ public virtual inherited sharing class QueryBuilder {
 
         //like
         public Condition likeAnyBoth(String fieldValue) {
-            this.formedCondition =
-                this.fieldName +
-                ' LIKE ' +
-                this.quote('%' + fieldValue + '%');
+            this.formedCondition = this.fieldName + ' LIKE ' + this.quote('%' + fieldValue + '%');
             return this;
         }
 
         public Condition likeAnyLeft(String fieldValue) {
-            this.formedCondition =
-                this.fieldName +
-                ' LIKE ' +
-                this.quote('%' + fieldValue);
+            this.formedCondition = this.fieldName + ' LIKE ' + this.quote('%' + fieldValue);
             return this;
         }
 
         public Condition likeAnyRight(String fieldValue) {
-            this.formedCondition =
-                this.fieldName +
-                ' LIKE ' +
-                this.quote(fieldValue + '%');
+            this.formedCondition = this.fieldName + ' LIKE ' + this.quote(fieldValue + '%');
             return this;
         }
 
-        public Condition notLikeAnyRight(String fieldValue) {
-            this.formedCondition =
-                '( NOT ' +
-                this.fieldName +
-                ' LIKE ' +
-                this.quote(fieldValue + '%') +
-                ')';
+        public Condition notLikeAnyBoth(String fieldValue){
+            this.formedCondition = ' (NOT ' + this.fieldName + ' LIKE ' + this.quote('%' + fieldValue + '%') + ')';
             return this;
         }
     }
 
     public class InCondition extends FieldCondition {
+
         public InCondition(String fieldName) {
             super(fieldName);
         }
@@ -2545,10 +2036,7 @@ public virtual inherited sharing class QueryBuilder {
         }
 
         public Condition inCollection(QueryBuilder queryBuilder) {
-            this.formedCondition =
-                this.fieldName +
-                ' IN ' +
-                this.bracket(queryBuilder.toString());
+            this.formedCondition = this.fieldName + ' IN ' + this.bracket(queryBuilder.toString());
             return this;
         }
 
@@ -2565,10 +2053,7 @@ public virtual inherited sharing class QueryBuilder {
             if (inSet.isEmpty()) {
                 this.formedCondition = '';
             }
-            this.formedCondition =
-                this.fieldName +
-                ' IN ' +
-                this.buildIn(inSet);
+            this.formedCondition = this.fieldName + ' IN ' + this.buildIn(inSet);
             return this;
         }
 
@@ -2576,10 +2061,7 @@ public virtual inherited sharing class QueryBuilder {
             if (inSet.isEmpty()) {
                 this.formedCondition = '';
             }
-            this.formedCondition =
-                this.fieldName +
-                ' IN ' +
-                this.buildIn(inSet);
+            this.formedCondition = this.fieldName + ' IN ' + this.buildIn(inSet);
             return this;
         }
 
@@ -2587,49 +2069,38 @@ public virtual inherited sharing class QueryBuilder {
             if (inSet.isEmpty()) {
                 this.formedCondition = '';
             }
-            this.formedCondition =
-                this.fieldName +
-                ' IN ' +
-                this.buildInNoQuote(inSet);
+            this.formedCondition = this.fieldName + ' IN ' + this.buildInNoQuote(inSet);
             return this;
         }
 
         //set helpers
         private String buildIn(Set<String> inSet) {
             return this.bracket(
-                this.QUOTE +
-                    String.join(
-                        new List<String>(inSet),
-                        this.QUOTE + ', ' + this.QUOTE
-                    ) +
                     this.QUOTE
+                            + String.join(new List<String> (inSet), this.QUOTE + ', ' + this.QUOTE)
+                            + this.QUOTE
             );
         }
 
         private String buildIn(Set<Id> inSet) {
             return this.bracket(
-                this.QUOTE +
-                    String.join(
-                        new List<Id>(inSet),
-                        this.QUOTE + ', ' + this.QUOTE
-                    ) +
                     this.QUOTE
+                            + String.join(new List<Id> (inSet), this.QUOTE + ', ' + this.QUOTE)
+                            + this.QUOTE
             );
         }
 
         private String buildInNoQuote(Set<Decimal> inSet) {
-            return this.bracket(String.join(new List<Decimal>(inSet), ', '));
+            return this.bracket(String.join(new List<Decimal> (inSet), ', '));
         }
+
 
         //in - list
         public Condition inCollection(List<Id> inList) {
             if (inList.isEmpty()) {
                 this.formedCondition = '';
             }
-            this.formedCondition =
-                this.fieldName +
-                ' IN ' +
-                this.buildIn(inList);
+            this.formedCondition = this.fieldName + ' IN ' + this.buildIn(inList);
             return this;
         }
 
@@ -2637,10 +2108,7 @@ public virtual inherited sharing class QueryBuilder {
             if (inList.isEmpty()) {
                 this.formedCondition = '';
             }
-            this.formedCondition =
-                this.fieldName +
-                ' IN ' +
-                this.buildIn(inList);
+            this.formedCondition = this.fieldName + ' IN ' + this.buildIn(inList);
             return this;
         }
 
@@ -2648,10 +2116,7 @@ public virtual inherited sharing class QueryBuilder {
             if (inList.isEmpty()) {
                 this.formedCondition = '';
             }
-            this.formedCondition =
-                this.fieldName +
-                ' IN ' +
-                this.buildInNoQuote(inList);
+            this.formedCondition = this.fieldName + ' IN ' + this.buildInNoQuote(inList);
             return this;
         }
 
@@ -2670,23 +2135,24 @@ public virtual inherited sharing class QueryBuilder {
         //list helpers
         private String buildIn(List<String> inList) {
             return this.bracket(
-                +this.QUOTE +
-                    String.join(inList, this.QUOTE + ', ' + this.QUOTE) +
-                    this.QUOTE
+                    +this.QUOTE
+                            + String.join(inList, this.QUOTE + ', ' + this.QUOTE)
+                            + this.QUOTE
             );
         }
 
         private String buildIn(List<Id> inList) {
             return this.bracket(
-                +this.QUOTE +
-                    String.join(inList, this.QUOTE + ', ' + this.QUOTE) +
-                    this.QUOTE
+                    +this.QUOTE
+                            + String.join(inList, this.QUOTE + ', ' + this.QUOTE)
+                            + this.QUOTE
             );
         }
 
         private String buildInNoQuote(List<Decimal> inList) {
             return this.bracket(String.join(inList, ', '));
         }
+
 
         //not in
         public Condition notIn(List<SObject> inList) {
@@ -2700,11 +2166,17 @@ public virtual inherited sharing class QueryBuilder {
         public Condition notIn(Set<Id> inSet) {
             if (inSet.isEmpty()) {
                 this.formedCondition = '';
+                return this;
             }
-            this.formedCondition =
-                this.fieldName +
-                ' NOT IN ' +
-                this.buildIn(inSet);
+            this.formedCondition = this.fieldName + ' NOT IN ' + this.buildIn(inSet);
+            return this;
+        }
+
+        public Condition notIn(Set<String> inSet) {
+            if (inSet.isEmpty()) {
+                this.formedCondition = '';
+            }
+            this.formedCondition = this.fieldName + ' NOT IN ' + this.buildIn(inSet);
             return this;
         }
 
@@ -2712,50 +2184,23 @@ public virtual inherited sharing class QueryBuilder {
             if (inList.isEmpty()) {
                 this.formedCondition = '';
             }
-            this.formedCondition =
-                this.fieldName +
-                ' NOT IN ' +
-                this.buildIn(inList);
+            this.formedCondition = this.fieldName + ' NOT IN ' + this.buildIn(inList);
             return this;
         }
 
         public Condition notIn(QueryBuilder queryBuilder) {
-            queryBuilder.isSingleFieldSubQuery = true;
             String builtSubQuery = queryBuilder.toString();
             if (String.isEmpty(builtSubQuery)) {
                 this.formedCondition = '';
+                return this;
             }
-            this.formedCondition =
-                this.fieldName +
-                ' NOT IN ' +
-                this.bracket(builtSubQuery);
-            return this;
-        }
-    }
-
-    public class IncludesCondition extends FieldCondition {
-        public IncludesCondition(String fieldName) {
-            super(fieldName);
-        }
-
-        public Condition includes(String value) {
-            this.formedCondition =
-                this.fieldName +
-                ' includes ' +
-                this.bracket(this.QUOTE + value + this.QUOTE);
-            return this;
-        }
-
-        public Condition excludes(String value) {
-            this.formedCondition =
-                this.fieldName +
-                ' excludes ' +
-                this.bracket(this.QUOTE + value + this.QUOTE);
+            this.formedCondition = this.fieldName + ' IN ' + this.bracket(builtSubQuery);
             return this;
         }
     }
 
     public class ComplexCondition extends Condition {
+
         private Condition startCondition;
         private List<String> conditionsOrder;
         private List<Condition> conditions;
@@ -2801,11 +2246,7 @@ public virtual inherited sharing class QueryBuilder {
             for (Integer i = 0; i < conditions.size(); i++) {
                 String conditionOrder = this.conditionsOrder[i];
                 Condition condition = this.conditions[i];
-                this.formedCondition +=
-                    conditionOrder +
-                    ' ' +
-                    condition.toString() +
-                    ' ';
+                this.formedCondition += conditionOrder + ' ' + condition.toString() + ' ';
             }
             this.formedCondition = this.bracket(this.formedCondition);
             return this;
@@ -2836,6 +2277,7 @@ public virtual inherited sharing class QueryBuilder {
      * @version 1.0
      */
     public abstract class ObjectTypeDependentCondition extends Condition {
+
         private String objectType;
 
         public ObjectTypeDependentCondition() {
@@ -2848,6 +2290,7 @@ public virtual inherited sharing class QueryBuilder {
     }
 
     public class RecordTypeCondition extends ObjectTypeDependentCondition {
+
         private String recordTypeName;
 
         public RecordTypeCondition(String recordTypeName) {
@@ -2856,17 +2299,11 @@ public virtual inherited sharing class QueryBuilder {
         }
 
         private Id getRecordTypeId() {
-            return Schema.getGlobalDescribe()
-                .get(this.objectType)
-                .getDescribe()
-                .getRecordTypeInfosByName()
-                .get(this.recordTypeName)
-                .getRecordTypeId();
+            return Schema.getGlobalDescribe().get(this.objectType).getDescribe().getRecordTypeInfosByName().get(this.recordTypeName).getRecordTypeId();
         }
 
         public override String toString() {
-            this.formedCondition =
-                'RecordTypeId = ' + this.quote(this.getRecordTypeId());
+            this.formedCondition = 'RecordTypeId = ' + this.quote(this.getRecordTypeId());
             return this.formedCondition;
         }
     }
@@ -2878,15 +2315,12 @@ public virtual inherited sharing class QueryBuilder {
      * @version 1.0
      */
     public virtual class Order {
+
         private final String sortingField;
         private String sortingOrder;
         private String nullsOrder;
 
-        protected Order(
-            String sortingField,
-            String sortingOrder,
-            String nullsOrder
-        ) {
+        protected Order(String sortingField, String sortingOrder, String nullsOrder) {
             this.sortingField = sortingField;
             this.sortingOrder = sortingOrder;
             this.nullsOrder = nullsOrder;
@@ -2931,12 +2365,9 @@ public virtual inherited sharing class QueryBuilder {
         }
 
         public override String toString() {
-            return this.sortingField +
-                ' ' +
-                this.sortingOrder +
-                (String.isNotEmpty(this.nullsOrder)
-                    ? ' NULLS ' + this.nullsOrder
-                    : '');
+            return this.sortingField
+                    + ' ' + this.sortingOrder
+                    + (String.isNotEmpty(this.nullsOrder) ? ' NULLS ' + this.nullsOrder : '');
         }
     }
 
@@ -2947,6 +2378,7 @@ public virtual inherited sharing class QueryBuilder {
      * @version 1.0
      */
     public class AscOrder extends Order {
+
         public AscOrder(String sortingField) {
             super(sortingField, 'ASC');
         }
@@ -2959,6 +2391,7 @@ public virtual inherited sharing class QueryBuilder {
      * @version 1.0
      */
     public class DescOrder extends Order {
+
         public DescOrder(String sortingField) {
             super(sortingField, 'DESC');
         }
@@ -2966,22 +2399,16 @@ public virtual inherited sharing class QueryBuilder {
 
     //mocking provider
     public class QueryBuilderMockProvider implements System.StubProvider {
+
         private StubbedQueryBuilder stubbedQueryBuilder;
 
-        public QueryBuilderMockProvider(
-            StubbedQueryBuilder stubbedQueryBuilder
-        ) {
+        public QueryBuilderMockProvider(StubbedQueryBuilder stubbedQueryBuilder) {
             this.stubbedQueryBuilder = stubbedQueryBuilder;
         }
 
-        public Object handleMethodCall(
-            Object stubbedObject,
-            String stubbedMethodName,
-            Type returnType,
-            List<Type> listOfParamTypes,
-            List<String> listOfParamNames,
-            List<Object> listOfArgs
-        ) {
+        public Object handleMethodCall(Object stubbedObject, String stubbedMethodName,
+                Type returnType, List<Type> listOfParamTypes, List<String> listOfParamNames,
+                List<Object> listOfArgs) {
             switch on stubbedMethodName {
                 when 'toString' {
                     return this.stubbedQueryBuilder.stubToString();
@@ -2999,9 +2426,7 @@ public virtual inherited sharing class QueryBuilder {
                     if (listOfArgs.isEmpty()) {
                         return this.stubbedQueryBuilder.stubToMap();
                     } else {
-                        return this.stubbedQueryBuilder.stubToMap(
-                            (Map<Id, SObject>) listOfArgs[0]
-                        );
+                        return this.stubbedQueryBuilder.stubToMap((Map<Id, SObject>)listOfArgs[0]);
                     }
                 }
                 when 'toSObject' {
@@ -3011,14 +2436,10 @@ public virtual inherited sharing class QueryBuilder {
                     return this.stubbedQueryBuilder.stubToIdSet();
                 }
                 when 'extractIds' {
-                    return this.stubbedQueryBuilder.stubExtractIds(
-                        (String) listOfArgs[0]
-                    );
+                    return this.stubbedQueryBuilder.stubExtractIds((String)listOfArgs[0]);
                 }
                 when 'extractField' {
-                    return this.stubbedQueryBuilder.stubExtractField(
-                        (String) listOfArgs[0]
-                    );
+                    return this.stubbedQueryBuilder.stubExtractField((String)listOfArgs[0]);
                 }
                 when 'addConditions' {
                     return this.stubbedQueryBuilder.stubbedConditionsManager;
@@ -3029,22 +2450,16 @@ public virtual inherited sharing class QueryBuilder {
     }
 
     public class ConditionsManagerMockProvider implements System.StubProvider {
+
         public StubbedQueryBuilder stubbedQueryBuilder;
 
-        public ConditionsManagerMockProvider(
-            StubbedQueryBuilder stubbedQueryBuilder
-        ) {
+        public ConditionsManagerMockProvider(StubbedQueryBuilder stubbedQueryBuilder) {
             this.stubbedQueryBuilder = stubbedQueryBuilder;
         }
 
-        public Object handleMethodCall(
-            Object stubbedObject,
-            String stubbedMethodName,
-            Type returnType,
-            List<Type> listOfParamTypes,
-            List<String> listOfParamNames,
-            List<Object> listOfArgs
-        ) {
+        public Object handleMethodCall(Object stubbedObject, String stubbedMethodName,
+                Type returnType, List<Type> listOfParamTypes, List<String> listOfParamNames,
+                List<Object> listOfArgs) {
             switch on stubbedMethodName {
                 when 'endConditions' {
                     return this.stubbedQueryBuilder;
@@ -3058,6 +2473,7 @@ public virtual inherited sharing class QueryBuilder {
     }
 
     public class StubbedQueryBuilder extends QueryBuilder {
+
         private QueryBuilder parent;
         private String queryString;
         private String queryCountString;
@@ -3075,13 +2491,8 @@ public virtual inherited sharing class QueryBuilder {
         public StubbedQueryBuilder(QueryBuilder parent) {
             super();
             this.parent = parent;
-            this.stubbedQueryBuilder = (QueryBuilder) Test.createStub(
-                QueryBuilder.class,
-                new QueryBuilderMockProvider(this)
-            );
-            this.stubbedConditionsManager = this.parent.conditionsManager.cloneConditionsManager(
-                this.stubbedQueryBuilder
-            );
+            this.stubbedQueryBuilder = (QueryBuilder) Test.createStub(QueryBuilder.class, new QueryBuilderMockProvider(this));
+            this.stubbedConditionsManager = this.parent.conditionsManager.cloneConditionsManager(this.stubbedQueryBuilder);
         }
 
         //end stub and return to normal Query builder flow
@@ -3098,9 +2509,7 @@ public virtual inherited sharing class QueryBuilder {
             return this;
         }
 
-        public StubbedQueryBuilder addStubToStringCount(
-            String queryCountString
-        ) {
+        public StubbedQueryBuilder addStubToStringCount(String queryCountString) {
             this.queryCountString = queryCountString;
             return this;
         }
@@ -3130,16 +2539,12 @@ public virtual inherited sharing class QueryBuilder {
             return this;
         }
 
-        public StubbedQueryBuilder addStubExtractIds(
-            Set<Id> extractedIdsResult
-        ) {
+        public StubbedQueryBuilder addStubExtractIds(Set<Id> extractedIdsResult) {
             this.extractedIdsResult = extractedIdsResult;
             return this;
         }
 
-        public StubbedQueryBuilder addStubExtractField(
-            List<Object> extractedFieldsResult
-        ) {
+        public StubbedQueryBuilder addStubExtractField(List<Object> extractedFieldsResult) {
             this.extractedFieldsResult = extractedFieldsResult;
             return this;
         }
@@ -3184,6 +2589,74 @@ public virtual inherited sharing class QueryBuilder {
 
         private List<Object> stubExtractField(String fieldName) {
             return this.extractedFieldsResult;
+        }
+    }
+
+    /**
+     * Class, which performs validation of list of SObjects.
+     * Can check CRUD and FLS.
+     *
+     * @author github.com/4an70m
+     * @version 1.0
+     */
+    public class SObjectReadValidator {
+
+        private List<SObject> sObjectsToValidate;
+        private SObjectType sObjectType;
+        private DescribeSObjectResult describedSObjectType;
+
+        public SObjectReadValidator(List<SObject> sObjectsToValidate) {
+            this.sObjectsToValidate = sObjectsToValidate;
+            this.sObjectType = sObjectsToValidate.getSObjectType();
+            this.describedSObjectType = this.sObjectType.getDescribe();
+        }
+
+        public void validate() {
+            this.checkObjectAccess();
+            this.checkFieldsAccess();
+        }
+
+        public void checkObjectAccess() {
+            if (!this.describedSObjectType.isAccessible() || !this.describedSObjectType.isQueryable()) {
+                throw new System.NoAccessException();
+            }
+        }
+
+        public void checkFieldsAccess() {
+            Map<String, SObjectField> sobjectFields = this.describedSObjectType.fields.getMap();
+            Map<String, ChildRelationship> childRelationshipsByName = this.getChildRelationshipsByName(describedSObjectType);
+            for (SObject sobj : this.sObjectsToValidate) {
+                this.validateSobject(sobj, sobjectFields, childRelationshipsByName);
+            }
+        }
+
+        private void validateSobject(SObject sobj, Map<String, SObjectField> sobjectFields, Map<String, ChildRelationship> childRelationshipsByName) {
+            Map<String, Object> sobjectPopulatedFields = sobj.getPopulatedFieldsAsMap();
+            for (String fieldName : sobjectPopulatedFields.keySet()) {
+                SObjectField sobjectField = sobjectFields.get(fieldName);
+                if (sobjectField == null) {
+                    ChildRelationship childRelationship = childRelationshipsByName.get(fieldName);
+                    if (childRelationship == null) {
+                        System.debug('FLS Validator: No child relationship: ' + fieldName);
+                        continue;
+                    }
+                    new SObjectReadValidator(sobj.getSObjects(fieldName)).validate();
+                    continue;
+                } else if (!sobjectField.getDescribe().isAccessible()) {
+                    System.debug('FLS Validator: Not accessible field: ' + fieldName);
+                    sobj.put(sobjectField, null);
+                    continue;
+                }
+            }
+        }
+
+        private Map<String, ChildRelationship> getChildRelationshipsByName(DescribeSObjectResult describedSObjectType) {
+            Map<String, ChildRelationship> result = new Map<String, ChildRelationship>();
+            List<ChildRelationship> childRelationships = describedSObjectType.getChildRelationships();
+            for (ChildRelationship childRelationship : childRelationships) {
+                result.put(childRelationship.getRelationshipName(), childRelationship);
+            }
+            return result;
         }
     }
 
