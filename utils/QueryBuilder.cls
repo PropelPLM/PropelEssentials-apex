@@ -1593,6 +1593,8 @@ public virtual inherited sharing class QueryBuilder {
                 '. Query: ' +
                 this.toString()
             );
+
+            throw new QueryException(e.getMessage());
         }
     }
 
