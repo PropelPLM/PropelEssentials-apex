@@ -1588,7 +1588,6 @@ public virtual inherited sharing class QueryBuilder {
             // Security.stripInaccessible will throw in Mocks
             if (Test.isRunningTest()) { return new List<SObject>(); }
             throw new QueryException(
-                QueryBuilder.class.getName(),
                 e.getMessage() + '. Query: ' + this.toString()
             );
         }
